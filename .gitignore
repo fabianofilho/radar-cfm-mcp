@@ -10,3 +10,6 @@ __pycache__/
 *.duckdb.wal
 data/
 !src/radar_cfm_mcp/
+
+# Scratch de teste manual (cliente HTTP, logs de servidor)
+.tmp/

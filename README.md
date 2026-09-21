@@ -112,6 +112,56 @@ Dois detalhes que moldaram o desenho:
 - **PDF só é baixado quando a ementa casa com alguma palavra-chave.** Baixar as 2.457
   seria abusivo, e a ementa já basta para a triagem.
 
+## Modo connector (servidor HTTP)
+
+Por padrão o servidor fala **stdio**: o cliente sobe o processo na máquina de quem usa.
+Com `TRANSPORTE=streamable-http`, ele vira um servidor alcançável pela rede — que é o que
+o Claude aceita como custom connector.
+
+```bash
+TRANSPORTE=streamable-http HTTP_HOST=0.0.0.0 HTTP_PORTA=8000 uv run radar-cfm-mcp
+```
+
+| Variável | Padrão | Observação |
+| --- | --- | --- |
+| `TRANSPORTE` | `stdio` | `streamable-http` liga o modo connector |
+| `HTTP_HOST` / `HTTP_PORTA` / `HTTP_PATH` | `127.0.0.1` / `8000` / `/mcp` | |
+| `HTTP_STATELESS` | `true` | cada requisição independente; escala melhor |
+| `HTTP_LIMITE_GLOBAL_POR_MINUTO` | `1200` | o teto que protege a máquina |
+| `HTTP_LIMITE_POR_MINUTO` | `600` | por origem, contra chamada direta |
+
+**Por que dois limites.** Quando o Claude chama um connector remoto, as requisições chegam
+dos **IPs da Anthropic**, não do usuário final. Limitar só por IP colocaria todos os
+usuários no mesmo balde: ou derruba todo mundo junto, ou não protege nada. O teto global é
+o que vale para esse tráfego; o por origem serve contra quem chama o servidor direto.
+
+### A base não vai junto, e o sync roda fora
+
+O DuckDB recusa abrir para escrita enquanto houver um leitor — e no modo connector o
+servidor abre a base a cada requisição. Escrever direto no arquivo servido falharia sempre
+que a coleta caísse em cima de uma consulta.
+
+Por isso o sync usa `--publicar`: constrói a base ao lado e troca por `os.replace`, que é
+atômico no POSIX. Quem já abriu continua no arquivo antigo até fechar (o tempo de uma
+requisição); quem abrir depois pega o novo.
+
+```bash
+uv run cfm-cli sync --publicar          # constrói ao lado e troca no fim
+uv run cfm-cli sync --publicar --forcar # aceita base menor que a servida
+```
+
+**A publicação é recusada quando a base nova encolhe mais de 10%.** Coleta interrompida por
+rede ruim, portal respondendo truncado ou teste com `--max-paginas` produzem uma base
+pequena e aparentemente válida — e sem essa checagem ela substituiria a boa em silêncio,
+para todo mundo que consulta. A versão trocada fica como `.anterior`, e
+`store.troca.reverter()` volta atrás.
+
+### Hospedar reduz a carga no CFM
+
+Hoje, cada pessoa que clona o repositório roda o próprio crawler nas 246 páginas. Com um
+connector, uma instância varre e todo mundo consulta a mesma base. Para um portal de
+conselho profissional, o connector é a opção mais respeitosa.
+
 ## Limitações conhecidas
 
 **O corpus relevante é pequeno, e isso é do CFM, não do projeto.** Das 2.457 resoluções,

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
 from radar_cfm_mcp.config import carregar_config
+from radar_cfm_mcp.mcp_server.limite import LimitadorPorOrigem, origem_da_requisicao
 from radar_cfm_mcp.mcp_server.tools.resolucoes import RespostaConsulta, RespostaMonitoramento
 from radar_cfm_mcp.mcp_server.tools.resolucoes import (
     consultar_resolucao_cfm as _consultar_resolucao_cfm,
@@ -61,16 +63,83 @@ async def monitorar_novas_resolucoes(
     )
 
 
+def _com_limite(app: Any, limite_por_minuto: int, limite_global: int) -> Any:
+    """Embrulha o app ASGI com o teto de requisicoes por origem.
+
+    O `run()` do SDK nao aceita middleware, entao o app e construido por
+    `streamable_http_app()`, embrulhado aqui e servido por uvicorn.
+    """
+    limitador = LimitadorPorOrigem(limite_por_minuto, limite_global)
+
+    async def middleware(scope: Any, receive: Any, send: Any) -> None:
+        if scope.get("type") != "http":
+            await app(scope, receive, send)
+            return
+        origem = origem_da_requisicao(scope)
+        if not limitador.permitir(origem):
+            logger.warning("limite %s excedido (origem %s)", limitador.motivo_ultima_recusa, origem)
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 429,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"retry-after", b"60"),
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": b'{"erro":"limite de requisicoes excedido; tente em 1 minuto"}',
+                }
+            )
+            return
+        await app(scope, receive, send)
+
+    return middleware
+
+
 def main() -> None:
-    """Sobe o servidor MCP no stdio."""
+    """Sobe o servidor MCP. Stdio por padrao; HTTP no modo connector."""
     config = carregar_config()
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
         stream=sys.stderr,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    logger.info("radar-cfm-mcp subindo (base em %s)", config.duckdb_path)
-    mcp.run(transport="stdio")
+
+    if config.transporte == "stdio":
+        logger.info("radar-cfm-mcp subindo em stdio (base em %s)", config.duckdb_path)
+        mcp.run(transport="stdio")
+        return
+
+    # Modo connector. A base e aberta somente para leitura a cada requisicao, e
+    # o sync roda FORA deste processo: um escritor com leitor aberto e recusado
+    # pelo DuckDB, entao a coleta grava num arquivo novo e troca por rename.
+    import uvicorn
+
+    app = _com_limite(
+        mcp.streamable_http_app(
+            streamable_http_path=config.http_path,
+            stateless_http=config.http_stateless,
+            host=config.http_host,
+        ),
+        config.http_limite_por_minuto,
+        config.http_limite_global_por_minuto,
+    )
+    logger.info(
+        "radar-cfm-mcp em http://%s:%d%s (stateless=%s, limite %d/min por origem e "
+        "%d/min global, base=%s)",
+        config.http_host,
+        config.http_porta,
+        config.http_path,
+        config.http_stateless,
+        config.http_limite_por_minuto,
+        config.http_limite_global_por_minuto,
+        config.duckdb_path,
+    )
+    uvicorn.run(app, host=config.http_host, port=config.http_porta, log_level="warning")
 
 
 if __name__ == "__main__":

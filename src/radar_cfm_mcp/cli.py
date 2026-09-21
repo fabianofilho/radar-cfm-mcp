@@ -14,6 +14,7 @@ from radar_cfm_mcp.mcp_server.tools.resolucoes import (
     monitorar_novas_resolucoes,
 )
 from radar_cfm_mcp.store.db import conectar, reindexar_fts
+from radar_cfm_mcp.store.troca import BaseSuspeita, caminho_em_construcao, publicar
 
 app = typer.Typer(help="Administração do radar-cfm-mcp", no_args_is_help=True)
 
@@ -22,8 +23,23 @@ app = typer.Typer(help="Administração do radar-cfm-mcp", no_args_is_help=True)
 def sync(
     max_paginas: int = typer.Option(0, help="0 = todas; útil para testar com poucas"),
     max_pdfs: int = typer.Option(25, help="Teto de PDFs baixados nesta execução"),
+    publicar_ao_fim: bool = typer.Option(
+        False,
+        "--publicar",
+        help="Constrói a base ao lado e troca por rename no fim (modo connector)",
+    ),
+    forcar: bool = typer.Option(
+        False,
+        "--forcar",
+        help="Publica mesmo se a base nova encolheu (primeiro carregamento ou teste)",
+    ),
 ) -> None:
-    """Varre o portal do CFM e atualiza a base local."""
+    """Varre o portal do CFM e atualiza a base local.
+
+    Com ``--publicar``, escreve numa base nova e só troca pela servida no fim.
+    É o modo para quando há um servidor HTTP lendo o arquivo: o DuckDB recusa
+    abrir para escrita enquanto houver leitor, então escrever direto falharia.
+    """
     config = carregar_config()
     logging_level = config.log_level.upper()
     import logging
@@ -33,8 +49,14 @@ def sync(
         format="%(levelname)s %(name)s: %(message)s",
     )
 
+    alvo = caminho_em_construcao(config.duckdb_path) if publicar_ao_fim else config.duckdb_path
+    if publicar_ao_fim and alvo.exists():
+        # Sobra de uma execução interrompida: recomeçar do zero é mais seguro
+        # que continuar sobre estado desconhecido.
+        alvo.unlink()
+
     async def rodar() -> None:
-        with conectar(config.duckdb_path) as conexao:
+        with conectar(alvo) as conexao:
             resultado = await sincronizar(
                 conexao,
                 palavras_chave=config.palavras_chave,
@@ -49,6 +71,14 @@ def sync(
                 f"{resultado.pdfs_baixados} PDFs baixados"
             )
             typer.echo(f"índice FTS: {'criado' if indexado else 'indisponível (busca por LIKE)'}")
+
+        if publicar_ao_fim:
+            try:
+                publicado = publicar(config.duckdb_path, forcar=forcar)
+            except BaseSuspeita as erro:
+                typer.secho(f"publicação recusada: {erro}", fg=typer.colors.RED)
+                raise typer.Exit(code=1) from erro
+            typer.secho(f"base publicada: {publicado}", fg=typer.colors.GREEN)
 
     asyncio.run(rodar())
 

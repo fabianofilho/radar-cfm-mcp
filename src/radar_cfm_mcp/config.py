@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -22,6 +22,24 @@ class Config(BaseSettings):
     # Horário fixo, não intervalo: os syncs locais são escalonados de madrugada.
     sync_hora_local: str = Field(default="02:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     log_level: str = Field(default="INFO")
+
+    # --- modo connector (servidor HTTP publico) ---
+    # Por padrao o servidor fala stdio: o cliente sobe o processo na maquina de
+    # quem usa. Em "streamable-http" ele vira um servidor alcancavel pela rede,
+    # que e o que o Claude aceita como custom connector.
+    transporte: Literal["stdio", "streamable-http"] = Field(default="stdio")
+    http_host: str = Field(default="127.0.0.1")
+    http_porta: int = Field(default=8000, ge=1, le=65535)
+    http_path: str = Field(default="/mcp")
+    # Stateless: cada requisicao e independente, sem sessao guardada no servidor.
+    # Escala melhor e simplifica o deploy; para duas tools de consulta, basta.
+    http_stateless: bool = Field(default=True)
+    # Dois tetos por minuto. O global e o que protege a maquina: quando o
+    # Claude.ai chama um connector, as requisicoes chegam dos IPs da Anthropic,
+    # entao limitar por IP colocaria todos os usuarios no mesmo balde. O por
+    # origem serve contra quem chama o servidor direto, fora do Claude.
+    http_limite_global_por_minuto: int = Field(default=1200, ge=1)
+    http_limite_por_minuto: int = Field(default=600, ge=1)
 
     @field_validator("palavras_chave", mode="before")
     @classmethod
