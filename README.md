@@ -156,10 +156,10 @@ tiraria as outras do ar. Com a cópia, a coleta faz upsert por cima do que já e
 caso é uma base desatualizada, nunca uma base menor. A cópia é feita pelo próprio DuckDB
 (`COPY FROM DATABASE`), porque um `cp` pegaria o arquivo sem o WAL pendente.
 
-**A publicação é recusada quando a base nova encolhe mais de 10%.** Coleta interrompida por
-rede ruim, portal respondendo truncado ou teste com `--max-paginas` produzem uma base
-pequena e aparentemente válida, e sem essa checagem ela substituiria a boa em silêncio,
-para todo mundo que consulta. A versão trocada fica como `.anterior`, e
+**A publicação é recusada quando a base nova encolhe mais de 10%.** Com a cópia acima, uma
+varredura interrompida já não produz base pequena: ela só deixa de atualizar. A checagem
+fica como rede de segurança para o que a cópia não cobre, como um clone que falhou pela
+metade. A versão trocada fica como `.anterior`, e
 `store.troca.reverter()` volta atrás.
 
 ### Hospedar reduz a carga no CFM
