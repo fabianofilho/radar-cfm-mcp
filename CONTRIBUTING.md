@@ -43,8 +43,8 @@ nao dimensionados para volume automatizado.
 
 Verificado em 21/09/2026:
 
-- `portal.cfm.org.br/robots.txt` — só `/wp-admin/` está bloqueado. O caminho que o crawler
+- `portal.cfm.org.br/robots.txt`: só `/wp-admin/` está bloqueado. O caminho que o crawler
   usa (`/buscar-normas-cfm-e-crm/`) é permitido.
-- `sistemas.cfm.org.br` — não publica `robots.txt` (404), portanto sem restrição declarada.
+- `sistemas.cfm.org.br`: não publica `robots.txt` (404), portanto sem restrição declarada.
 
 Se isso mudar, o crawler precisa mudar junto. Não vale contornar.

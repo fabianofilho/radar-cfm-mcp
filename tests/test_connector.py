@@ -68,7 +68,7 @@ def test_troca_funciona_com_leitor_aberto(tmp_path: Path) -> None:
 
 
 def test_leitor_aberto_antes_da_troca_ve_a_versao_antiga(tmp_path: Path) -> None:
-    """Quem já abriu continua no inode antigo — consistente durante a requisição."""
+    """Quem já abriu continua no inode antigo, consistente durante a requisição."""
     servida = tmp_path / "cfm.duckdb"
     _base(servida, "antiga")
     _base(caminho_em_construcao(servida), "nova")

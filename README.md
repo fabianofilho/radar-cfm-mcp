@@ -115,7 +115,7 @@ Dois detalhes que moldaram o desenho:
 ## Modo connector (servidor HTTP)
 
 Por padrão o servidor fala **stdio**: o cliente sobe o processo na máquina de quem usa.
-Com `TRANSPORTE=streamable-http`, ele vira um servidor alcançável pela rede — que é o que
+Com `TRANSPORTE=streamable-http`, ele vira um servidor alcançável pela rede, que é o que
 o Claude aceita como custom connector.
 
 ```bash
@@ -137,7 +137,7 @@ o que vale para esse tráfego; o por origem serve contra quem chama o servidor d
 
 ### A base não vai junto, e o sync roda fora
 
-O DuckDB recusa abrir para escrita enquanto houver um leitor — e no modo connector o
+O DuckDB recusa abrir para escrita enquanto houver um leitor, e no modo connector o
 servidor abre a base a cada requisição. Escrever direto no arquivo servido falharia sempre
 que a coleta caísse em cima de uma consulta.
 
@@ -152,7 +152,7 @@ uv run cfm-cli sync --publicar --forcar # aceita base menor que a servida
 
 **A publicação é recusada quando a base nova encolhe mais de 10%.** Coleta interrompida por
 rede ruim, portal respondendo truncado ou teste com `--max-paginas` produzem uma base
-pequena e aparentemente válida — e sem essa checagem ela substituiria a boa em silêncio,
+pequena e aparentemente válida, e sem essa checagem ela substituiria a boa em silêncio,
 para todo mundo que consulta. A versão trocada fica como `.anterior`, e
 `store.troca.reverter()` volta atrás.
 
@@ -178,7 +178,7 @@ como revogado. Revogação parcial ou alteração por outra resolução não apa
 
 **O parser depende do formato da página.** Se o portal mudar, o crawler falha com uma
 mensagem explícita (`resultadoBuscaJson não encontrado`) em vez de devolver vazio em
-silêncio — mas vai falhar.
+silêncio, mas vai falhar.
 
 **A busca cai para `LIKE` sem o FTS.** A extensão full-text do DuckDB é baixada na primeira
 execução. Sem rede, a busca continua respondendo, mais lenta e sem ranking.
@@ -196,7 +196,7 @@ Veja [CONTRIBUTING.md](CONTRIBUTING.md). Não rode o crawler em loop nem reduza 
 
 ## Licença e atribuição
 
-[Apache License 2.0](LICENSE) — escolhida por o projeto tocar em regulação de conduta
+[Apache License 2.0](LICENSE): escolhida por o projeto tocar em regulação de conduta
 médica.
 
 Construído no contexto do [IA.med](https://iamed.cc).

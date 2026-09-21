@@ -92,7 +92,7 @@ def test_periodo_exclui_antigas(db: duckdb.DuckDBPyConnection) -> None:
 
 
 def test_fts_indexa_e_a_busca_continua_funcionando(db: duckdb.DuckDBPyConnection) -> None:
-    """Se o FTS não estiver disponível, a busca cai para LIKE — mas responde."""
+    """Se o FTS não estiver disponível, a busca cai para LIKE, mas responde."""
     gravar(db, [_registro(ementa="Dispõe sobre inteligência artificial em medicina")])
     reindexar_fts(db)  # pode falhar offline; a busca precisa funcionar de qualquer jeito
     assert len(buscar_por_tema(db, "inteligência artificial")) == 1

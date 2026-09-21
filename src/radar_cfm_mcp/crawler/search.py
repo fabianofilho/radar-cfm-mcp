@@ -2,7 +2,7 @@
 
 Descoberta que muda o desenho (confirmada em 20/09/2026): a página de resultados
 traz os dados **estruturados em JSON**, numa variável ``resultadoBuscaJson``
-embutida no HTML. Não é preciso raspar tabela nem adivinhar layout — e o JSON já
+embutida no HTML. Não é preciso raspar tabela nem adivinhar layout, e o JSON já
 inclui ``IS_REVOGADA``, que é a informação de vigência que mais importa.
 
 O parâmetro de busca textual na URL é ignorado pelo portal (o COUNT não muda),
@@ -77,7 +77,7 @@ def parse_pagina(html: str) -> tuple[list[Resolucao], int]:
     """Extrai as resoluções e o total de itens da busca.
 
     Raises:
-        BuscaIndisponivel: quando a variável de resultados não está na página —
+        BuscaIndisponivel: quando a variável de resultados não está na página,
             sinal de que o portal mudou e o parser precisa ser revisto.
     """
     achado = _RESULTADO.search(html)
@@ -158,7 +158,7 @@ class CrawlerCFM:
     async def varrer(self, *, max_paginas: int | None = None) -> list[Resolucao]:
         """Percorre as páginas respeitando o delay configurado.
 
-        ``max_paginas`` limita a varredura — útil para o modo incremental, já que
+        ``max_paginas`` limita a varredura, útil para o modo incremental, já que
         as resoluções mais recentes vêm primeiro.
         """
         primeira, total = await self.pagina(1)

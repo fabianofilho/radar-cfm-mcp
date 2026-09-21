@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_res_vigente ON resolucoes (vigente);
 
 
 class BaseIndisponivel(RuntimeError):
-    """A base existe mas está travada — tipicamente um sync em curso."""
+    """A base existe mas está travada, tipicamente um sync em curso."""
 
 
 def _instalar_fts(conexao: duckdb.DuckDBPyConnection) -> bool:
