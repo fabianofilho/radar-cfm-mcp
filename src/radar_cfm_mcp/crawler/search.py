@@ -26,7 +26,10 @@ BASE_BUSCA = "https://portal.cfm.org.br/buscar-normas-cfm-e-crm/"
 BASE_PDF = "https://sistemas.cfm.org.br/normas/arquivos"
 BASE_VISUALIZAR = "https://sistemas.cfm.org.br/normas/visualizar"
 
-USER_AGENT = "radar-cfm-mcp/0.1 (uso pessoal, respeitando rate limit)"
+# Identifica o projeto para quem administra o portal, com link para o repositorio.
+# Um coletor publico anonimo e ma cidadania: se algo incomodar do outro lado,
+# precisa haver como descobrir o que e e falar com quem mantem.
+USER_AGENT = "radar-cfm-mcp/0.1 (+https://github.com/fabianofilho/radar-cfm-mcp)"
 POR_PAGINA = 10
 
 _RESULTADO = re.compile(r"let\s+resultadoBuscaJson\s*=\s*(\{.*?\});\s*\n", re.DOTALL)
