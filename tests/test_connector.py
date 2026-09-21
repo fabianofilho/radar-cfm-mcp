@@ -12,6 +12,7 @@ from radar_cfm_mcp.store.db import aplicar_schema
 from radar_cfm_mcp.store.troca import (
     BaseSuspeita,
     caminho_em_construcao,
+    clonar_para_construcao,
     publicar,
     reverter,
 )
@@ -235,3 +236,24 @@ def test_primeira_publicacao_nao_exige_forcar(tmp_path: Path) -> None:
     _base_com(caminho_em_construcao(servida), 10)
     publicar(servida)
     assert servida.exists()
+
+
+def test_clone_nao_perde_o_que_a_varredura_de_hoje_nao_trouxe(tmp_path: Path) -> None:
+    """Resolução que saiu do portal continua na base nova: a coleta faz upsert por cima."""
+    servida = tmp_path / "cfm.duckdb"
+    _base(servida, "resolucao-antiga")
+
+    nova = clonar_para_construcao(servida)
+
+    conexao = duckdb.connect(str(nova), read_only=True)
+    try:
+        assert conexao.execute(
+            "SELECT count(*) FROM resolucoes WHERE identificador = 'resolucao-antiga'"
+        ).fetchone() == (1,)
+    finally:
+        conexao.close()
+
+
+def test_clone_sem_base_servida_nao_e_erro(tmp_path: Path) -> None:
+    """Primeira varredura da vida: não há de onde clonar, e o caminho volta vazio."""
+    assert not clonar_para_construcao(tmp_path / "ainda-nao-existe.duckdb").exists()

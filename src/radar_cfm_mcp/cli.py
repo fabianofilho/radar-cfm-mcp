@@ -14,7 +14,7 @@ from radar_cfm_mcp.mcp_server.tools.resolucoes import (
     monitorar_novas_resolucoes,
 )
 from radar_cfm_mcp.store.db import conectar, reindexar_fts
-from radar_cfm_mcp.store.troca import BaseSuspeita, caminho_em_construcao, publicar
+from radar_cfm_mcp.store.troca import BaseSuspeita, clonar_para_construcao, publicar
 
 app = typer.Typer(help="Administração do radar-cfm-mcp", no_args_is_help=True)
 
@@ -49,11 +49,7 @@ def sync(
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    alvo = caminho_em_construcao(config.duckdb_path) if publicar_ao_fim else config.duckdb_path
-    if publicar_ao_fim and alvo.exists():
-        # Sobra de uma execução interrompida: recomeçar do zero é mais seguro
-        # que continuar sobre estado desconhecido.
-        alvo.unlink()
+    alvo = clonar_para_construcao(config.duckdb_path) if publicar_ao_fim else config.duckdb_path
 
     async def rodar() -> None:
         with conectar(alvo) as conexao:

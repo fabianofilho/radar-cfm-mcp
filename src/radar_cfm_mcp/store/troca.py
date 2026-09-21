@@ -117,6 +117,50 @@ def publicar(
     return destino
 
 
+def _citar(caminho: Path) -> str:
+    """Escapa aspas simples para interpolar o caminho no SQL do ATTACH."""
+    return str(caminho).replace("'", "''")
+
+
+def clonar_para_construcao(destino: Path | str) -> Path:
+    """Começa a base em construção como cópia da que está sendo servida.
+
+    Construir do zero publicaria só o que a varredura de hoje trouxe. Uma
+    resolução que saia do portal, ou uma varredura interrompida no meio, sumiria
+    da base servida sem aviso. Com a cópia, a coleta faz upsert por cima do que
+    já existe: o pior caso vira uma base desatualizada, não uma base menor.
+
+    A cópia é feita pelo próprio DuckDB, não pelo sistema de arquivos, porque um
+    ``cp`` pegaria o arquivo sem o WAL pendente. De quebra, sai compactada: a
+    base acumula folga a cada upsert e a cópia devolve o tamanho real.
+
+    Sem base servida ainda, devolve o caminho vazio: a primeira coleta constrói
+    do nada mesmo.
+    """
+    destino = Path(destino)
+    origem = caminho_em_construcao(destino)
+    for resto in (origem, Path(str(origem) + ".wal")):
+        if resto.exists():
+            resto.unlink()
+    if not destino.exists():
+        return origem
+
+    import duckdb
+
+    # Conexão em memória com as duas anexadas: assim os nomes são explícitos, em
+    # vez de dependerem de como o DuckDB batiza a base principal pelo nome do
+    # arquivo (que aqui termina em ".duckdb.novo").
+    conexao = duckdb.connect()
+    try:
+        conexao.execute(f"ATTACH '{_citar(destino)}' AS servida (READ_ONLY)")
+        conexao.execute(f"ATTACH '{_citar(origem)}' AS nova")
+        conexao.execute("COPY FROM DATABASE servida TO nova")
+    finally:
+        conexao.close()
+    logger.info("base em construção clonada de %s", destino.name)
+    return origem
+
+
 def reverter(destino: Path | str) -> Path:
     """Volta para a base anterior, se houver.
 

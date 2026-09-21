@@ -150,6 +150,12 @@ uv run cfm-cli sync --publicar          # constrói ao lado e troca no fim
 uv run cfm-cli sync --publicar --forcar # aceita base menor que a servida
 ```
 
+**A base ao lado começa como cópia da servida, não vazia.** Uma varredura que pare no meio
+(rede ruim, portal fora) produziria uma base com só uma parte das resoluções, e publicá-la
+tiraria as outras do ar. Com a cópia, a coleta faz upsert por cima do que já existe: o pior
+caso é uma base desatualizada, nunca uma base menor. A cópia é feita pelo próprio DuckDB
+(`COPY FROM DATABASE`), porque um `cp` pegaria o arquivo sem o WAL pendente.
+
 **A publicação é recusada quando a base nova encolhe mais de 10%.** Coleta interrompida por
 rede ruim, portal respondendo truncado ou teste com `--max-paginas` produzem uma base
 pequena e aparentemente válida, e sem essa checagem ela substituiria a boa em silêncio,
