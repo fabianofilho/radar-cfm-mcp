@@ -38,3 +38,13 @@ nao dimensionados para volume automatizado.
 - Se precisar de uma coleta real durante o desenvolvimento, use os limites que a CLI
   oferece (`cfm-cli sync --max-paginas 3 --max-pdfs 3`).
 - Um PR que aumente a frequencia de acesso as fontes precisa justificar por que.
+
+## robots.txt
+
+Verificado em 21/09/2026:
+
+- `portal.cfm.org.br/robots.txt` — só `/wp-admin/` está bloqueado. O caminho que o crawler
+  usa (`/buscar-normas-cfm-e-crm/`) é permitido.
+- `sistemas.cfm.org.br` — não publica `robots.txt` (404), portanto sem restrição declarada.
+
+Se isso mudar, o crawler precisa mudar junto. Não vale contornar.
