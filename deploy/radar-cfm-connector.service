@@ -1,0 +1,39 @@
+# Servidor MCP do CFM em HTTP, para hospedar como connector.
+#
+# Escuta so no loopback de proposito. Quem publica para fora e a camada da
+# frente (proxy reverso com TLS, ou Tailscale Funnel), que aponta para esta
+# porta. Assim a decisao de expor fica num lugar so, e nao espalhada em
+# variavel de ambiente.
+#
+# Instalar como servico de usuario:
+#   cp deploy/radar-cfm-connector.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now radar-cfm-connector
+#
+# A coleta NAO roda aqui: ela e um servico separado que constroi a base ao
+# lado e troca por rename. Este processo so le.
+#   cfm-cli sync --publicar
+
+[Unit]
+Description=Servidor MCP do CFM em HTTP (modo connector)
+Documentation=https://github.com/fabianofilho/radar-cfm-mcp
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/radar-cfm-mcp
+Environment=TRANSPORTE=streamable-http
+Environment=HTTP_HOST=127.0.0.1
+Environment=HTTP_PORTA=8102
+Environment=HTTP_PATH=/mcp
+Environment=HTTP_STATELESS=true
+ExecStart=%h/.local/bin/uv --directory %h/radar-cfm-mcp run radar-cfm-mcp
+Restart=always
+RestartSec=5
+ProtectSystem=strict
+ReadWritePaths=%h/radar-cfm-mcp/data
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

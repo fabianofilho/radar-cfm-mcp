@@ -135,6 +135,28 @@ dos **IPs da Anthropic**, não do usuário final. Limitar só por IP colocaria t
 usuários no mesmo balde: ou derruba todo mundo junto, ou não protege nada. O teto global é
 o que vale para esse tráfego; o por origem serve contra quem chama o servidor direto.
 
+### Rodar como serviço
+
+`deploy/radar-cfm-connector.service` é uma unit de usuário pronta, testada nesta configuração:
+
+```bash
+cp deploy/radar-cfm-connector.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now radar-cfm-connector
+```
+
+Ela **escuta só em 127.0.0.1**. Expor para fora é uma camada à parte, um proxy reverso
+com TLS ou um túnel, que aponta para essa porta. Manter assim deixa a decisão de expor
+num lugar só, em vez de espalhada em variável de ambiente.
+
+O serviço só lê. Quem escreve é a coleta, que roda separada e troca o arquivo por rename:
+
+```bash
+cfm-cli sync --publicar
+```
+
+Se o processo morrer, o systemd sobe de novo em 5 segundos (`Restart=always`).
+
 ### A base não vai junto, e o sync roda fora
 
 O DuckDB recusa abrir para escrita enquanto houver um leitor, e no modo connector o
