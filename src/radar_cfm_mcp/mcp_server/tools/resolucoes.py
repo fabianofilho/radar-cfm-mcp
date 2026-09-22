@@ -103,45 +103,58 @@ class RespostaMonitoramento(BaseModel):
     aviso: str | None = None
 
 
+def _radicais(termo: str) -> list[str]:
+    """Palavras do termo que servem de âncora, já cortadas na desinência.
+
+    Só palavras de quatro letras ou mais: "de" e "em" casariam em qualquer lugar.
+    O corte tolera gênero e número ("assíncrono" onde o texto diz "assíncrona"),
+    mas para no radical de cinco letras, senão "tele" casaria com telefone.
+    """
+    palavras = {p for p in re.split(r"\W+", termo.lower()) if len(p) >= 4}
+    return [p[:-2] if len(p) >= 7 else p for p in palavras]
+
+
 def _trecho(texto: str | None, termo: str, *, janela: int = 260) -> str | None:
-    """Pedaço do texto em volta da primeira ocorrência do termo, ou None.
+    """Pedaço do texto em volta do ponto que melhor cobre o termo, ou None.
 
     Devolver o começo do documento quando o termo não aparece seria pior que
     devolver nada: o campo se chama ``trecho_relevante`` e quem lê trata como
     resposta à pergunta feita. A abertura de uma resolução é sempre plausível,
     então o erro passa despercebido e vira citação errada.
 
-    Busca o termo inteiro e, se não achar, as palavras dele da mais longa para a
-    mais curta, porque quem pergunta escreve frase ("telediagnóstico assíncrono")
-    e a norma traz uma palavra só.
-
-    Tolera a desinência final: a pergunta vem com "assíncrono" e o texto diz
-    "assíncrona". O corte para no radical de cinco letras, senão sobra um prefixo
-    curto que casa em qualquer palavra e devolve trecho aleatório, que é o mesmo
-    defeito por outro caminho.
+    **Escolhe a janela que reúne mais palavras do termo, não a primeira
+    ocorrência de uma delas.** Para "registro em prontuário telemedicina", a
+    primeira ocorrência de "telemedicina" costuma ser o cabeçalho da resolução,
+    que não responde nada; o trecho útil é onde as três palavras aparecem juntas.
     """
     if not texto:
         return None
 
     alvo = texto.lower()
     posicao = alvo.find(termo.strip().lower())
+
     if posicao < 0:
-        palavras = sorted(
-            (p for p in re.split(r"\W+", termo.lower()) if len(p) >= 4),
-            key=len,
-            reverse=True,
-        )
-        for palavra in palavras:
-            for corte in (palavra, palavra[:-1], palavra[:-2]):
-                if len(corte) < 5 and corte != palavra:
-                    continue
-                posicao = alvo.find(corte)
-                if posicao >= 0:
+        radicais = _radicais(termo)
+        if not radicais:
+            return None
+
+        ocorrencias: list[int] = []
+        for radical in radicais:
+            inicio_busca = 0
+            while (achado := alvo.find(radical, inicio_busca)) >= 0:
+                ocorrencias.append(achado)
+                inicio_busca = achado + 1
+                if len(ocorrencias) > 400:  # texto enorme: já há candidatos de sobra
                     break
-            if posicao >= 0:
-                break
-    if posicao < 0:
-        return None
+        if not ocorrencias:
+            return None
+
+        def cobertura(centro: int) -> tuple[int, int]:
+            perto = alvo[max(0, centro - janela // 2) : centro + janela // 2]
+            # Empate resolvido pela posição, para o resultado não variar entre chamadas.
+            return sum(radical in perto for radical in radicais), -centro
+
+        posicao = max(ocorrencias, key=cobertura)
 
     inicio = max(0, posicao - janela // 2)
     fim = min(len(texto), posicao + janela // 2)

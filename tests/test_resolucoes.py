@@ -254,3 +254,27 @@ def test_texto_novo_substitui_o_antigo(db: duckdb.DuckDBPyConnection) -> None:
 
     linha = db.execute("SELECT texto_completo FROM resolucoes").fetchone()
     assert linha[0] == "versão nova"
+
+
+def test_trecho_prefere_onde_as_palavras_aparecem_juntas() -> None:
+    """A 1a ocorrencia de 'telemedicina' e o cabecalho, que nao responde nada."""
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    texto = (
+        "RESOLUÇÃO CFM 2314/2022. Define e regulamenta a telemedicina. "
+        + ("Considerando o parecer anterior. " * 20)
+        + "Art. 9 O médico deve fazer o registro em prontuário de cada "
+        "atendimento por telemedicina, guardando o conteúdo."
+    )
+    achado = _trecho(texto, "registro em prontuário telemedicina")
+    assert achado is not None
+    assert "prontuário" in achado, "pegou o cabeçalho em vez do artigo"
+    assert "RESOLUÇÃO CFM" not in achado
+
+
+def test_trecho_com_uma_palavra_so_continua_na_primeira_ocorrencia() -> None:
+    """Sem concorrência entre palavras, o comportamento antigo vale."""
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    achado = _trecho("abertura qualquer. Art. 1 trata de telemedicina.", "telemedicina")
+    assert achado is not None and "telemedicina" in achado
