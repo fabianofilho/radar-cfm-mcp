@@ -152,6 +152,29 @@ HTTP_HOSTS_PUBLICOS=mcp.exemplo.ts.net
 Aceita vários separados por vírgula. O loopback continua valendo junto, porque é assim
 que se testa o servidor de dentro da máquina.
 
+### Texto integral: baixar o PDF de todas
+
+Por padrão o sync baixa o PDF só das resoluções cuja ementa toca em IA ou
+telemedicina, que é o escopo do projeto. São 5 das 2.457. Para as outras, a busca por
+tema compara apenas a ementa, e `trecho_relevante` vem nulo: não porque a norma não
+trate do assunto, mas porque o texto nunca foi lido. A resposta diz isso, em
+`texto_completo_disponivel` e no aviso.
+
+Para servir a base a mais gente, vale baixar tudo uma vez:
+
+```bash
+uv run cfm-cli sync --texto-integral --max-pdfs 0 --publicar
+```
+
+Com o intervalo padrão de 2s entre requisições, a primeira execução leva perto de uma
+hora e meia e ocupa cerca de 500 MB em `data/pdfs`. O cache em disco evita repetir: as
+execuções seguintes só baixam o que é novo.
+
+**A coleta seguinte não apaga o texto.** Quem roda o sync diário sem `--texto-integral`
+não traz PDF nenhum, e um upsert comum sobrescreveria as extrações com nulo. A coluna
+só é substituída quando o novo valor tem conteúdo, porque texto ausente na coleta
+significa "não busquei desta vez", nunca "a norma ficou sem texto".
+
 ### Rodar como serviço
 
 `deploy/radar-cfm-connector.service` é uma unit de usuário pronta, testada nesta configuração:
