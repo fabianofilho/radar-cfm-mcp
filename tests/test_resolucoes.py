@@ -233,3 +233,24 @@ async def test_avisa_quando_a_busca_viu_so_a_ementa(caminho_db: str) -> None:
     assert r.resultados[0].texto_completo_disponivel is False
     assert r.resultados[0].trecho_relevante is None
     assert r.aviso is not None and "só" in r.aviso and "ementa" in r.aviso
+
+
+def test_coleta_sem_pdf_nao_apaga_texto_ja_baixado(db: duckdb.DuckDBPyConnection) -> None:
+    """A coleta da madrugada não baixa PDF; se sobrescrevesse, perderíamos tudo."""
+    gravar(db, [_registro(ementa="telemedicina", texto_completo="Art. 1 o texto inteiro")])
+    gravar(db, [_registro(ementa="telemedicina atualizada", texto_completo=None)])
+
+    linha = db.execute(
+        "SELECT ementa, texto_completo FROM resolucoes WHERE identificador = '1/2020'"
+    ).fetchone()
+    assert linha[0] == "telemedicina atualizada", "a ementa nova tem que entrar"
+    assert linha[1] == "Art. 1 o texto inteiro", "o texto antigo tem que sobreviver"
+
+
+def test_texto_novo_substitui_o_antigo(db: duckdb.DuckDBPyConnection) -> None:
+    """Preservar não pode virar congelar: texto novo tem que entrar."""
+    gravar(db, [_registro(texto_completo="versão antiga")])
+    gravar(db, [_registro(texto_completo="versão nova")])
+
+    linha = db.execute("SELECT texto_completo FROM resolucoes").fetchone()
+    assert linha[0] == "versão nova"

@@ -23,6 +23,11 @@ app = typer.Typer(help="Administração do radar-cfm-mcp", no_args_is_help=True)
 def sync(
     max_paginas: int = typer.Option(0, help="0 = todas; útil para testar com poucas"),
     max_pdfs: int = typer.Option(25, help="Teto de PDFs baixados nesta execução"),
+    texto_integral: bool = typer.Option(
+        False,
+        "--texto-integral",
+        help="Baixa o PDF de TODAS as resoluções, não só das que tocam no tema",
+    ),
     publicar_ao_fim: bool = typer.Option(
         False,
         "--publicar",
@@ -39,6 +44,12 @@ def sync(
     Com ``--publicar``, escreve numa base nova e só troca pela servida no fim.
     É o modo para quando há um servidor HTTP lendo o arquivo: o DuckDB recusa
     abrir para escrita enquanto houver leitor, então escrever direto falharia.
+
+    ``--texto-integral`` baixa o PDF de todas as 2.457 resoluções, e não só das
+    que tocam em IA ou telemedicina. Sem ele, a busca por tema compara apenas a
+    ementa. Com o intervalo padrão entre requisições, a primeira execução leva
+    perto de uma hora e meia; o cache em disco evita repetir depois. Combine com
+    ``--max-pdfs 0`` para não parar no teto.
     """
     config = carregar_config()
     logging_level = config.log_level.upper()
@@ -58,7 +69,8 @@ def sync(
                 palavras_chave=config.palavras_chave,
                 delay_segundos=config.crawler_delay_segundos,
                 max_paginas=max_paginas or None,
-                max_pdfs=max_pdfs,
+                max_pdfs=max_pdfs if max_pdfs > 0 else 10**9,
+                texto_integral=texto_integral,
                 diretorio_cache=config.duckdb_path.parent / "pdfs",
             )
             indexado = reindexar_fts(conexao)

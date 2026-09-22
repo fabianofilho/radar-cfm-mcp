@@ -58,11 +58,22 @@ async def sincronizar(
     max_paginas: int | None = None,
     max_pdfs: int = 25,
     diretorio_cache: Path | str = "./data/pdfs",
+    texto_integral: bool = False,
 ) -> ResultadoSync:
-    """Varre a busca e baixa o texto completo só dos relevantes.
+    """Varre a busca e baixa o texto completo dos relevantes.
 
-    O PDF só é baixado quando a ementa casa com alguma palavra-chave: são 2.457
-    resoluções, e baixar todas seria abusivo com um portal de conselho.
+    Por padrão o PDF só é baixado quando a ementa casa com alguma palavra-chave:
+    são 2.457 resoluções, e baixar todas de uma vez é pesado para um portal de
+    conselho profissional.
+
+    Com ``texto_integral``, baixa o de todas. Vale quando quem hospeda vai servir
+    a base a mais gente, porque aí o download acontece uma vez só e poupa cada
+    usuário de repetir a varredura. O cache em disco evita rebaixar o que já veio,
+    então o custo alto é o da primeira execução.
+
+    Sem o texto, a busca por tema compara só a ementa, e quem consulta recebe
+    "trecho não encontrado" sem saber se a norma trata do assunto ou se o texto
+    nunca foi lido.
     """
     cache = CachePdf(diretorio_cache)
     baixados = 0
@@ -70,10 +81,12 @@ async def sincronizar(
     async with CrawlerCFM(delay_segundos=delay_segundos) as crawler:
         resolucoes = await crawler.varrer(max_paginas=max_paginas)
         logger.info("CFM: %d resoluções coletadas", len(resolucoes))
+        if texto_integral:
+            logger.info("CFM: baixando o PDF de todas, teto de %d nesta execução", max_pdfs)
 
         registros: list[dict[str, Any]] = []
         for resolucao in resolucoes:
-            relevante = casa_palavras_chave(resolucao.ementa, palavras_chave)
+            relevante = texto_integral or casa_palavras_chave(resolucao.ementa, palavras_chave)
             if not relevante:
                 registros.append(_registro(resolucao))
                 continue

@@ -132,6 +132,27 @@ def publicadas_no_periodo(
     )
 
 
+# Colunas que custam caro para obter e que uma coleta pode simplesmente não
+# trazer. Para elas, o upsert só substitui quando o novo valor tem conteúdo.
+_PRESERVAR_SE_VAZIO = ("texto_completo",)
+
+
+def _atribuicao(coluna: str) -> str:
+    """Como o upsert atualiza esta coluna.
+
+    O sync baixa o PDF só de parte das resoluções, então a coleta seguinte traz
+    ``texto_completo = NULL`` para todas as outras. Com a atribuição direta, a
+    coleta da madrugada apagaria todo texto já baixado, e o prejuízo só
+    apareceria quando alguém consultasse e recebesse "trecho não encontrado".
+
+    Texto ausente na coleta significa "não busquei desta vez", nunca "a norma
+    ficou sem texto".
+    """
+    if coluna in _PRESERVAR_SE_VAZIO:
+        return f"{coluna} = coalesce(nullif(excluded.{coluna}, ''), resolucoes.{coluna})"
+    return f"{coluna} = excluded.{coluna}"
+
+
 def gravar(conexao: duckdb.DuckDBPyConnection, registros: list[dict[str, Any]]) -> tuple[int, int]:
     """Upsert em massa. Devolve (novos, atualizados)."""
     if not registros:
@@ -142,7 +163,7 @@ def gravar(conexao: duckdb.DuckDBPyConnection, registros: list[dict[str, Any]]) 
     colunas = list(linhas[0].keys())
     lista = ", ".join(colunas)
     marcadores = ", ".join("?" for _ in colunas)
-    atribuicoes = ", ".join(f"{c} = excluded.{c}" for c in colunas if c != "identificador")
+    atribuicoes = ", ".join(_atribuicao(coluna) for coluna in colunas if coluna != "identificador")
 
     staging = "staging_resolucoes"
     conexao.execute(
