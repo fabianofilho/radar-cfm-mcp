@@ -6,12 +6,13 @@ from datetime import date, timedelta
 from typing import Any
 
 import duckdb
+import pytest
 
 from radar_cfm_mcp.mcp_server.tools.resolucoes import (
     consultar_resolucao_cfm,
     monitorar_novas_resolucoes,
 )
-from radar_cfm_mcp.store.db import conectar, reindexar_fts
+from radar_cfm_mcp.store.db import aplicar_schema, conectar, reindexar_fts
 from radar_cfm_mcp.store.queries import buscar_por_tema, gravar, publicadas_no_periodo
 
 
@@ -157,3 +158,78 @@ async def test_dias_invalido(caminho_db: str) -> None:
     resposta = await monitorar_novas_resolucoes(0, caminho_db=caminho_db)
     assert resposta.total == 0
     assert resposta.aviso is not None
+
+
+def test_trecho_none_quando_o_termo_nao_esta_no_texto() -> None:
+    """Devolver a abertura do documento seria citação errada com cara de resposta."""
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    texto = "O CONSELHO FEDERAL DE MEDICINA, no uso das atribuições que lhe confere a lei..."
+    assert _trecho(texto, "prazo de resposta em telediagnóstico") is None
+
+
+def test_trecho_acha_pela_palavra_mais_longa_da_frase() -> None:
+    """Quem pergunta escreve frase; o texto legal traz uma palavra só."""
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    texto = (
+        "Art. 2º A TELEMEDICINA, em tempo real on-line (síncrona) ou off-line "
+        "(assíncrona), por multimeios em tecnologia, é permitida."
+    )
+    achado = _trecho(texto, "telediagnóstico assíncrono")
+    assert achado is not None
+    assert "assíncrona" in achado
+
+
+def test_trecho_ignora_palavra_curta_demais_para_ancorar() -> None:
+    """'de' casaria em qualquer lugar e devolveria trecho aleatório."""
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    assert _trecho("Texto qualquer sem o assunto pedido aqui.", "de ao") is None
+
+
+def test_trecho_tolera_desinencia_mas_nao_prefixo_curto() -> None:
+    """Aceitar 'assíncrono' onde há 'assíncrona' sem deixar 'tele' casar com tudo."""
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    # Radical de 5+ letras: casa, é a mesma palavra flexionada.
+    assert _trecho("fica permitida a modalidade assíncrona", "assíncrono") is not None
+    # 'tele' sozinho não pode ancorar num texto que só fala de telefone.
+    assert _trecho("o telefone do consultório deve constar", "telessaúde") is None
+
+
+@pytest.mark.asyncio
+async def test_total_e_quantas_casam_nao_quantas_vieram(caminho_db: str) -> None:
+    """Dizer 'total: 10' com 72 na base faz quem lê achar que viu tudo."""
+    with conectar(caminho_db) as conexao:
+        aplicar_schema(conexao)
+        conexao.executemany(
+            "INSERT INTO resolucoes (identificador, numero, ano, url_origem, url_pdf, "
+            "ementa, vigente) VALUES (?, ?, '2020', 'u', 'p', 'trata de publicidade', true)",
+            [[f"{i}/2020", str(i)] for i in range(30)],
+        )
+
+    r = await consultar_resolucao_cfm("publicidade", caminho_db=caminho_db, limite=10)
+
+    assert r.total == 30, "total tem que ser o universo que casa, nao a pagina"
+    assert r.retornados == 10
+    assert r.truncado is True
+    assert r.aviso is not None and "30" in r.aviso
+
+
+@pytest.mark.asyncio
+async def test_avisa_quando_a_busca_viu_so_a_ementa(caminho_db: str) -> None:
+    """Sem texto integral, 'trecho nulo' não significa 'a norma não trata disso'."""
+    with conectar(caminho_db) as conexao:
+        aplicar_schema(conexao)
+        conexao.execute(
+            "INSERT INTO resolucoes (identificador, numero, ano, url_origem, url_pdf, "
+            "ementa, vigente) VALUES ('1/2020', '1', '2020', 'u', 'p', "
+            "'dispoe sobre prontuario', true)"
+        )
+
+    r = await consultar_resolucao_cfm("prontuario", caminho_db=caminho_db)
+
+    assert r.resultados[0].texto_completo_disponivel is False
+    assert r.resultados[0].trecho_relevante is None
+    assert r.aviso is not None and "só" in r.aviso and "ementa" in r.aviso

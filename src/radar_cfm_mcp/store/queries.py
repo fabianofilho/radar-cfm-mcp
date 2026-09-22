@@ -68,6 +68,48 @@ def buscar_por_tema(
     )
 
 
+def contar_por_tema(
+    conexao: duckdb.DuckDBPyConnection,
+    tema: str,
+    *,
+    apenas_vigentes: bool = True,
+) -> int:
+    """Quantas resoluções casam com o tema, ignorando o limite de exibição.
+
+    Sem isto, a resposta diz "total: 10" tanto para um tema com 10 resoluções
+    quanto para um com 80, e quem lê conclui que viu tudo que existe.
+
+    Repete a mesma lógica da busca, FTS com queda para LIKE, porque contar por um
+    critério e listar por outro daria um total que não descreve a lista.
+    """
+    filtro_vigente = "AND vigente" if apenas_vigentes else ""
+    try:
+        linha = conexao.execute(
+            f"""
+            SELECT count(*) FROM (
+                SELECT fts_main_resolucoes.match_bm25(identificador, ?) AS relevancia, vigente
+                FROM resolucoes
+            ) WHERE relevancia IS NOT NULL {filtro_vigente}
+            """,
+            [tema],
+        ).fetchone()
+        return int(linha[0]) if linha else 0
+    except duckdb.Error as erro:
+        logger.debug("FTS indisponível na contagem (%s); usando LIKE", erro)
+
+    padrao = f"%{tema.strip()}%"
+    linha = conexao.execute(
+        f"""
+        SELECT count(*) FROM resolucoes
+        WHERE (lower(coalesce(ementa, '')) LIKE lower(?)
+               OR lower(coalesce(texto_completo, '')) LIKE lower(?))
+          {filtro_vigente}
+        """,
+        [padrao, padrao],
+    ).fetchone()
+    return int(linha[0]) if linha else 0
+
+
 def publicadas_no_periodo(
     conexao: duckdb.DuckDBPyConnection,
     *,

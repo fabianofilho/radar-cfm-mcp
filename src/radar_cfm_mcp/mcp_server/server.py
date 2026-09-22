@@ -24,12 +24,22 @@ mcp = MCPServer("radar-cfm-mcp", version="0.1.0")
 
 
 @mcp.tool()
-async def consultar_resolucao_cfm(tema: str, apenas_vigentes: bool = True) -> RespostaConsulta:
+async def consultar_resolucao_cfm(
+    tema: str, apenas_vigentes: bool = True, limite: int = 10
+) -> RespostaConsulta:
     """Consulta resoluções do CFM relacionadas a um tema.
 
     Devolve as resoluções mais relevantes, com número, ano, data, ementa, o
     trecho em volta do termo buscado e sempre a URL de origem. Resoluções
     revogadas vêm com vigente=false e o número da que as substituiu.
+
+    A resposta traz `total` (quantas casam na base) e `retornados` (quantas
+    vieram). Com `truncado=true`, não conclua "só existem N resoluções sobre
+    isso": aumente `limite`.
+
+    `trecho_relevante=null` significa que o termo não aparece no texto, e não
+    que a norma não trate do assunto. Nesse caso a resolução casou pela ementa
+    ou pelo índice, então abra a URL antes de afirmar qualquer coisa.
 
     Nunca trate um trecho como "a posição do CFM" sem abrir a fonte: a ementa e
     o link vêm justamente para isso.
@@ -37,10 +47,14 @@ async def consultar_resolucao_cfm(tema: str, apenas_vigentes: bool = True) -> Re
     Args:
         tema: assunto a buscar, por exemplo "telemedicina" ou "inteligência artificial".
         apenas_vigentes: quando True, omite as resoluções já revogadas.
+        limite: quantas resoluções trazer. Aumente para ver além das mais relevantes.
     """
     config = carregar_config()
     return await _consultar_resolucao_cfm(
-        tema, caminho_db=str(config.duckdb_path), apenas_vigentes=apenas_vigentes
+        tema,
+        caminho_db=str(config.duckdb_path),
+        apenas_vigentes=apenas_vigentes,
+        limite=limite,
     )
 
 
