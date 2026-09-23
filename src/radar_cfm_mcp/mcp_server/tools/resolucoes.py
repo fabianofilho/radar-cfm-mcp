@@ -11,6 +11,7 @@ from typing import Any
 import duckdb
 from pydantic import BaseModel, Field
 
+from radar_cfm_mcp.extract.vigencia import detectar_suspensao
 from radar_cfm_mcp.store.db import BaseIndisponivel, conectar
 from radar_cfm_mcp.store.queries import (
     buscar_por_tema,
@@ -48,6 +49,13 @@ AVISO_BUSCA_POR_PALAVRA = (
 )
 
 
+AVISO_SUSPENSA = (
+    "Atenção: há resultado com suspensão marcada na ementa (campo 'suspensa'). O portal "
+    "do CFM só estrutura revogação, então essas normas vêm com vigente=true. Para quem "
+    "vai aplicar, suspensa tem o mesmo efeito de revogada: confirme na URL oficial."
+)
+
+
 class ResolucaoCFM(BaseModel):
     """Uma resolução, sempre com a fonte para conferência."""
 
@@ -66,7 +74,27 @@ class ResolucaoCFM(BaseModel):
             "que a norma não trata do assunto, abra a URL de origem."
         ),
     )
-    vigente: bool
+    vigente: bool = Field(
+        description=(
+            "Só reflete revogação, que é o que o portal marca em campo próprio. "
+            "Uma norma suspensa vem com vigente=true: veja 'suspensa' antes de "
+            "concluir que ela está produzindo efeito."
+        )
+    )
+    suspensa: bool = Field(
+        default=False,
+        description=(
+            "A ementa traz marcação de suspensão. Para quem vai aplicar a norma, "
+            "suspensa tem o mesmo efeito prático de revogada."
+        ),
+    )
+    suspensao_parcial: bool = Field(
+        default=False,
+        description="Só alguns dispositivos foram suspensos; o resto da norma segue valendo",
+    )
+    nota_vigencia: str | None = Field(
+        default=None, description="O texto da marcação, como o CFM escreveu"
+    )
     revogada_por: str | None = None
     url_origem: str
     url_pdf: str
@@ -174,6 +202,9 @@ def _trecho(texto: str | None, termo: str, *, janela: int = 260) -> str | None:
 
 def _para_modelo(linha: dict[str, Any], termo: str | None = None) -> ResolucaoCFM:
     texto = linha.get("texto_completo")
+    # Lido da ementa a cada resposta, e nao de coluna: assim vale na base que ja
+    # existe, sem esperar a proxima coleta.
+    suspensao = detectar_suspensao(linha.get("ementa"))
     return ResolucaoCFM(
         identificador=linha["identificador"],
         numero=linha["numero"],
@@ -182,6 +213,9 @@ def _para_modelo(linha: dict[str, Any], termo: str | None = None) -> ResolucaoCF
         ementa=linha.get("ementa") or None,
         trecho_relevante=_trecho(texto, termo) if termo else None,
         vigente=bool(linha.get("vigente", True)),
+        suspensa=suspensao.suspensa,
+        suspensao_parcial=suspensao.parcial,
+        nota_vigencia=suspensao.nota,
         revogada_por=linha.get("revogada_por"),
         url_origem=linha["url_origem"],
         url_pdf=linha["url_pdf"],
@@ -248,12 +282,15 @@ async def consultar_resolucao_cfm(
         avisos.append(AVISO_BUSCA_POR_PALAVRA)
     if linhas and not any(linha.get("texto_completo") for linha in linhas):
         avisos.append(AVISO_SO_EMENTA)
+    resultados = [_para_modelo(linha, tema) for linha in linhas]
+    if any(r.suspensa for r in resultados):
+        avisos.append(AVISO_SUSPENSA)
     return RespostaConsulta(
         tema=tema,
         total=total,
         retornados=len(linhas),
         truncado=truncado,
-        resultados=[_para_modelo(linha, tema) for linha in linhas],
+        resultados=resultados,
         aviso=" ".join(avisos),
     )
 

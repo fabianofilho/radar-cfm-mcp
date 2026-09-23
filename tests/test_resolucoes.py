@@ -313,3 +313,41 @@ async def test_monitor_declara_quantas_ficaram_sem_data(caminho_db: str) -> None
     assert r.total == 0
     assert r.sem_data_publicacao == 1
     assert r.aviso is not None and "sem data de publicação" in r.aviso
+
+
+def test_suspensao_e_lida_da_marcacao_entre_parenteses() -> None:
+    """O CFM cola o status no fim da ementa; é a única pista que ele dá."""
+    from radar_cfm_mcp.extract.vigencia import detectar_suspensao
+
+    total = detectar_suspensao("Define a medicina do sono. [RESOLUÇÂO SUSPENSA]")
+    assert (total.suspensa, total.parcial) == (True, False)
+
+    parcial = detectar_suspensao("Normas para médicos do trabalho. (PARCIALMENTE SUSPENSA)")
+    assert (parcial.suspensa, parcial.parcial) == (True, True)
+
+    judicial = detectar_suspensao(
+        "Normas específicas. (Atenção dos dispositivos suspensos por decisão judicial)"
+    )
+    assert (judicial.suspensa, judicial.parcial) == (True, True)
+
+
+def test_norma_que_trata_de_suspensao_nao_esta_suspensa() -> None:
+    """A 2016/2013 dispõe sobre suspender outra; procurar a palavra solta erraria."""
+    from radar_cfm_mcp.extract.vigencia import detectar_suspensao
+
+    ementa = "Dispõe sobre a suspensão da Resolução CRM/DF nº 344/13 e a intervenção eleitoral."
+    assert detectar_suspensao(ementa).suspensa is False
+
+
+@pytest.mark.asyncio
+async def test_resposta_marca_suspensa_e_avisa(caminho_db: str) -> None:
+    """vigente=true numa norma suspensa é a pior leitura possível para quem aplica."""
+    with conectar(caminho_db) as conexao:
+        gravar(conexao, [_registro(ementa="Define a medicina do sono. (RESOLUÇÃO SUSPENSA)")])
+
+    r = await consultar_resolucao_cfm("medicina do sono", caminho_db=caminho_db)
+
+    assert r.resultados[0].vigente is True, "o portal não marcou revogação"
+    assert r.resultados[0].suspensa is True
+    assert r.resultados[0].nota_vigencia == "RESOLUÇÃO SUSPENSA"
+    assert r.aviso is not None and "suspens" in r.aviso.lower()
