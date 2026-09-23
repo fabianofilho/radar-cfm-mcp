@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, timedelta
 from typing import Any
 
@@ -64,6 +65,57 @@ def buscar_por_tema(
             LIMIT ?
             """,
             [padrao, padrao, limite],
+        )
+    )
+
+
+# "2314", "2314/2022", "2.314/2022", "Resolucao CFM n 2.314/2022". O ponto de
+# milhar e opcional porque o CFM escreve dos dois jeitos no proprio texto.
+_IDENTIFICADOR = re.compile(
+    r"^(?:resolu[çc][ãa]o\s+)?(?:cfm\s+)?(?:n[º°o]?\.?\s*)?"
+    r"(\d{1,2}[.\s]?\d{3}|\d{1,4})\s*(?:/\s*(\d{4}))?$",
+    re.I,
+)
+
+
+def identificador_no_tema(tema: str) -> tuple[str, str | None] | None:
+    """Número e ano, quando o tema é o endereço de uma resolução e não um assunto.
+
+    Quem digita "2314/2022" quer aquela norma, não uma busca textual. O índice
+    de texto não serve para isso: ele não indexa número solto, então a consulta
+    voltava zero mesmo com a resolução na base.
+    """
+    limpo = " ".join(tema.split())
+    achado = _IDENTIFICADOR.match(limpo)
+    if not achado:
+        return None
+    numero = achado.group(1).replace(".", "").replace(" ", "")
+    return numero, achado.group(2)
+
+
+def buscar_por_identificador(
+    conexao: duckdb.DuckDBPyConnection,
+    numero: str,
+    ano: str | None = None,
+) -> list[dict[str, Any]]:
+    """Resolução pelo número, com o ano quando informado.
+
+    Não filtra por vigência de propósito: quem pede uma norma pelo número quer
+    ver aquela norma, inclusive para descobrir que foi revogada.
+    """
+    if ano:
+        return _para_dicts(
+            conexao.execute(
+                f"SELECT {_COLUNAS}, NULL AS relevancia FROM resolucoes "
+                "WHERE numero = ? AND ano = ?",
+                [numero, ano],
+            )
+        )
+    return _para_dicts(
+        conexao.execute(
+            f"SELECT {_COLUNAS}, NULL AS relevancia FROM resolucoes "
+            "WHERE numero = ? ORDER BY ano DESC",
+            [numero],
         )
     )
 

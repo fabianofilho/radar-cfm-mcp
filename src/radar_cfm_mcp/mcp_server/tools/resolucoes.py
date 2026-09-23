@@ -14,8 +14,10 @@ from pydantic import BaseModel, Field
 from radar_cfm_mcp.extract.vigencia import detectar_suspensao
 from radar_cfm_mcp.store.db import BaseIndisponivel, conectar
 from radar_cfm_mcp.store.queries import (
+    buscar_por_identificador,
     buscar_por_tema,
     contar_por_tema,
+    identificador_no_tema,
     publicadas_no_periodo,
     sem_data_publicacao,
 )
@@ -41,6 +43,11 @@ AVISO_SO_EMENTA = (
     "a ementa. O projeto baixa o PDF apenas das resoluções cuja ementa toca em IA ou "
     "telemedicina, que é o escopo dele. Para os demais temas, o conteúdo dos artigos "
     "não foi lido: abra a URL antes de afirmar o que a norma diz."
+)
+AVISO_POR_NUMERO = (
+    "O tema foi lido como o número de uma resolução, então a busca foi direta e "
+    "'apenas_vigentes' não se aplica: quem pede uma norma pelo número precisa vê-la "
+    "mesmo revogada, e a revogação vem marcada no resultado."
 )
 AVISO_BUSCA_POR_PALAVRA = (
     "A busca casa qualquer palavra do tema, não a frase inteira, então um tema com "
@@ -260,7 +267,16 @@ async def consultar_resolucao_cfm(
     if not tema.strip():
         return RespostaConsulta(tema=tema, total=0, resultados=[], aviso="Informe um tema.")
 
+    # "2314/2022" e endereço, não assunto: o índice de texto não indexa número
+    # solto e devolvia zero com a resolução na base.
+    endereco = identificador_no_tema(tema)
+
     def consultar(c: duckdb.DuckDBPyConnection) -> tuple[list[dict[str, Any]], int]:
+        if endereco is not None:
+            numero, ano = endereco
+            achadas = buscar_por_identificador(c, numero, ano)
+            if achadas:
+                return achadas, len(achadas)
         return (
             buscar_por_tema(c, tema, limite=limite, apenas_vigentes=apenas_vigentes),
             contar_por_tema(c, tema, apenas_vigentes=apenas_vigentes),
@@ -278,13 +294,18 @@ async def consultar_resolucao_cfm(
             f"Não conclua que só existem {len(linhas)} sobre o tema; aumente 'limite' "
             f"para ver mais."
         )
-    if len(tema.split()) > 1 and truncado:
+    # Vale sempre que o tema tem mais de uma palavra, nao so quando trunca: um
+    # termo sem sentido trouxe 2 resultados porque o texto deles tinha uma das
+    # palavras, e ali nao havia truncamento para disparar o aviso.
+    if endereco is None and len(tema.split()) > 1:
         avisos.append(AVISO_BUSCA_POR_PALAVRA)
     if linhas and not any(linha.get("texto_completo") for linha in linhas):
         avisos.append(AVISO_SO_EMENTA)
     resultados = [_para_modelo(linha, tema) for linha in linhas]
     if any(r.suspensa for r in resultados):
         avisos.append(AVISO_SUSPENSA)
+    if endereco is not None and resultados:
+        avisos.append(AVISO_POR_NUMERO)
     return RespostaConsulta(
         tema=tema,
         total=total,

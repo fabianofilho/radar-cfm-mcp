@@ -351,3 +351,58 @@ async def test_resposta_marca_suspensa_e_avisa(caminho_db: str) -> None:
     assert r.resultados[0].suspensa is True
     assert r.resultados[0].nota_vigencia == "RESOLUÇÃO SUSPENSA"
     assert r.aviso is not None and "suspens" in r.aviso.lower()
+
+
+@pytest.mark.asyncio
+async def test_busca_pelo_numero_da_resolucao(caminho_db: str) -> None:
+    """Quem digita '2314/2022' quer aquela norma; o índice de texto não indexa número."""
+    with conectar(caminho_db) as conexao:
+        gravar(
+            conexao,
+            [
+                _registro(
+                    identificador="2314/2022", numero="2314", ano="2022", ementa="telemedicina"
+                )
+            ],
+        )
+
+    for tema in ("2314/2022", "2314", "Resolução CFM nº 2.314/2022"):
+        r = await consultar_resolucao_cfm(tema, caminho_db=caminho_db)
+        assert r.total == 1, f"não achou com tema={tema!r}"
+        assert r.resultados[0].identificador == "2314/2022"
+
+
+@pytest.mark.asyncio
+async def test_busca_por_numero_traz_a_revogada(caminho_db: str) -> None:
+    """Pedir pelo número e não receber nada esconde justamente a revogação."""
+    with conectar(caminho_db) as conexao:
+        gravar(
+            conexao,
+            [
+                _registro(
+                    identificador="1643/2002",
+                    numero="1643",
+                    ano="2002",
+                    vigente=False,
+                    revogada_por="2314/2022",
+                )
+            ],
+        )
+
+    r = await consultar_resolucao_cfm("1643/2002", caminho_db=caminho_db, apenas_vigentes=True)
+
+    assert r.total == 1
+    assert r.resultados[0].vigente is False
+    assert r.aviso is not None and "número" in r.aviso
+
+
+@pytest.mark.asyncio
+async def test_aviso_de_busca_por_palavra_nao_depende_de_truncar(caminho_db: str) -> None:
+    """Termo sem sentido trouxe resultado por casar uma palavra, e sem aviso."""
+    with conectar(caminho_db) as conexao:
+        gravar(conexao, [_registro(ementa="prestação de contas inexistente no exercício")])
+
+    r = await consultar_resolucao_cfm("xyzqwk inexistente", caminho_db=caminho_db)
+
+    assert r.truncado is False
+    assert r.aviso is not None and "qualquer palavra do tema" in r.aviso
