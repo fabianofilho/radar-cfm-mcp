@@ -11,6 +11,7 @@ import duckdb
 
 from radar_cfm_mcp.crawler.cache import CachePdf
 from radar_cfm_mcp.crawler.search import CrawlerCFM, Resolucao
+from radar_cfm_mcp.extract.datas import extrair_data_publicacao
 from radar_cfm_mcp.extract.parser import casa_palavras_chave, extrair_pdf
 from radar_cfm_mcp.store.queries import gravar
 
@@ -35,13 +36,17 @@ class ResultadoSync:
 
 
 def _registro(resolucao: Resolucao, **extra: Any) -> dict[str, Any]:
+    texto = extra.get("texto_completo")
+    # O campo DATA do portal e a data de carga no sistema deles, nao a
+    # publicacao: resolucao de 1972 vem com 01/11/24. A data boa esta no texto.
+    data = extrair_data_publicacao(texto, resolucao.ano)
     return {
         "identificador": resolucao.identificador,
         "numero": resolucao.numero,
         "ano": resolucao.ano,
-        "data_publicacao": resolucao.data_publicacao,
+        "data_publicacao": data,
         "ementa": resolucao.ementa,
-        "texto_completo": extra.get("texto_completo"),
+        "texto_completo": texto,
         "vigente": resolucao.vigente,
         "revogada_por": resolucao.revogada_por,
         "url_origem": resolucao.url_origem,

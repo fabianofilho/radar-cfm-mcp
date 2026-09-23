@@ -110,6 +110,20 @@ def contar_por_tema(
     return int(linha[0]) if linha else 0
 
 
+def sem_data_publicacao(conexao: duckdb.DuckDBPyConnection) -> tuple[int, int]:
+    """Quantas resoluções estão sem data de publicação, e o total.
+
+    O monitor filtra por data. Sem este número, uma base em que a extração de
+    data falhou devolve "nenhuma resolução nova" com a mesma cara de uma semana
+    tranquila, e o falso negativo passa despercebido justamente em vigilância
+    regulatória, onde ele é caro.
+    """
+    linha = conexao.execute(
+        "SELECT count(*) FILTER (WHERE data_publicacao IS NULL), count(*) FROM resolucoes"
+    ).fetchone()
+    return (int(linha[0]), int(linha[1])) if linha else (0, 0)
+
+
 def publicadas_no_periodo(
     conexao: duckdb.DuckDBPyConnection,
     *,

@@ -278,3 +278,38 @@ def test_trecho_com_uma_palavra_so_continua_na_primeira_ocorrencia() -> None:
 
     achado = _trecho("abertura qualquer. Art. 1 trata de telemedicina.", "telemedicina")
     assert achado is not None and "telemedicina" in achado
+
+
+def test_data_de_publicacao_sai_do_texto_nos_tres_formatos() -> None:
+    """O acervo mistura três jeitos de escrever a mesma coisa."""
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    assert extrair("RESOLUÇÃO CFM N° 2.471. Publicado em: 17/09/2026 | Edição: 176", 2026) == date(
+        2026, 9, 17
+    )
+    assert extrair("(Publicada no D.O.U. de 24 de setembro de 2019, Seção I, p.107)", 2019) == date(
+        2019, 9, 24
+    )
+    assert extrair("(D.O.U. - de 02/05/2005 - Seção I - Pág. 88)", 2005) == date(2005, 5, 2)
+
+
+def test_data_de_outra_norma_citada_nao_entra() -> None:
+    """Resolução de 2025 citando uma de 1992 não é publicada em 1992."""
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    texto = "Altera a Resolução CFM 1.355, publicada no D.O.U. de 11 de setembro de 1992"
+    assert extrair(texto, 2025) is None
+
+
+@pytest.mark.asyncio
+async def test_monitor_declara_quantas_ficaram_sem_data(caminho_db: str) -> None:
+    """Zero resultados com muitas sem data é 'não sei', não 'nada foi publicado'."""
+    with conectar(caminho_db) as conexao:
+        aplicar_schema(conexao)
+        gravar(conexao, [_registro(identificador="1/2020", data_publicacao=None)])
+
+    r = await monitorar_novas_resolucoes(30, caminho_db=caminho_db)
+
+    assert r.total == 0
+    assert r.sem_data_publicacao == 1
+    assert r.aviso is not None and "sem data de publicação" in r.aviso

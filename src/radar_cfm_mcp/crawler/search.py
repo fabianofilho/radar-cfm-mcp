@@ -45,7 +45,11 @@ class Resolucao:
 
     numero: str
     ano: str
-    data_publicacao: date | None
+    # Campo DATA do portal. NAO e a data de publicacao no DOU: a Resolucao
+    # 467/1972 vem com "01/11/24", que e quando entrou no sistema do CFM. Fica
+    # aqui por ser o que a fonte da, mas quem precisa da publicacao usa
+    # extract.datas.extrair_data_publicacao, que le do texto.
+    data_no_portal: date | None
     ementa: str
     vigente: bool
     revogada_por: str | None
@@ -107,7 +111,7 @@ def parse_pagina(html: str) -> tuple[list[Resolucao], int]:
             Resolucao(
                 numero=numero,
                 ano=ano,
-                data_publicacao=_data(item.get("DATA")),
+                data_no_portal=_data(item.get("DATA")),
                 ementa=str(item.get("RESUMO") or "").strip(),
                 vigente=not revogada,
                 revogada_por=(

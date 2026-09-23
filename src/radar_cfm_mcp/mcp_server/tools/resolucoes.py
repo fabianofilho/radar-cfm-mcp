@@ -16,6 +16,7 @@ from radar_cfm_mcp.store.queries import (
     buscar_por_tema,
     contar_por_tema,
     publicadas_no_periodo,
+    sem_data_publicacao,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,14 @@ class RespostaConsulta(BaseModel):
 class RespostaMonitoramento(BaseModel):
     dias: int
     total: int
+    sem_data_publicacao: int = Field(
+        default=0,
+        description=(
+            "Quantas resoluções da base não têm data e por isso ficam fora deste "
+            "filtro, existindo ou não no período. Número alto com total=0 significa "
+            "'não sei', não 'nada foi publicado'."
+        ),
+    )
     resultados: list[ResolucaoCFM]
     aviso: str | None = None
 
@@ -265,12 +274,11 @@ async def monitorar_novas_resolucoes(
             aviso="O parâmetro 'dias' precisa ser maior que zero.",
         )
 
-    nenhuma: list[dict[str, Any]] = []
-    linhas, aviso = _ler(
-        caminho_db,
-        lambda c: publicadas_no_periodo(c, dias=dias, limite=limite),
-        padrao=nenhuma,
-    )
+    def consultar(c: duckdb.DuckDBPyConnection) -> tuple[list[dict[str, Any]], tuple[int, int]]:
+        return publicadas_no_periodo(c, dias=dias, limite=limite), sem_data_publicacao(c)
+
+    vazio: tuple[list[dict[str, Any]], tuple[int, int]] = ([], (0, 0))
+    (linhas, (sem_data, total_base)), aviso = _ler(caminho_db, consultar, padrao=vazio)
 
     if palavras_chave:
         alvos = tuple(p.lower() for p in palavras_chave if p.strip())
@@ -283,9 +291,18 @@ async def monitorar_novas_resolucoes(
             )
         ]
 
+    avisos = [aviso or AVISO_FONTE]
+    if sem_data and total_base:
+        avisos.append(
+            f"{sem_data} das {total_base} resoluções da base estão sem data de publicação "
+            f"e não entram neste filtro, existindo ou não no período. A data é extraída do "
+            f"texto do PDF, que nem toda resolução antiga traz. Resultado vazio aqui não "
+            f"significa que nada foi publicado: confirme pela busca por tema."
+        )
     return RespostaMonitoramento(
         dias=dias,
         total=len(linhas),
+        sem_data_publicacao=sem_data,
         resultados=[_para_modelo(linha) for linha in linhas],
-        aviso=aviso or AVISO_FONTE,
+        aviso=" ".join(avisos),
     )
