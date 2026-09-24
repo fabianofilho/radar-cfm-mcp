@@ -9,6 +9,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 
 from radar_cfm_mcp.config import carregar_config
+from radar_cfm_mcp.mcp_server.capacidades import esconder_o_que_nao_existe
 from radar_cfm_mcp.mcp_server.limite import LimitadorPorOrigem, origem_da_requisicao
 from radar_cfm_mcp.mcp_server.tools.resolucoes import RespostaConsulta, RespostaMonitoramento
 from radar_cfm_mcp.mcp_server.tools.resolucoes import (
@@ -142,6 +143,9 @@ def _com_limite(app: Any, limite_por_minuto: int, limite_global: int) -> Any:
 def main() -> None:
     """Sobe o servidor MCP. Stdio por padrao; HTTP no modo connector."""
     config = carregar_config()
+    # Este servidor so tem tools. Anunciar prompts e resources faria quem mapeia
+    # o servidor gastar chamadas para descobrir lista vazia.
+    esconder_o_que_nao_existe(mcp)
     logging.basicConfig(
         level=getattr(logging, config.log_level.upper(), logging.INFO),
         stream=sys.stderr,
