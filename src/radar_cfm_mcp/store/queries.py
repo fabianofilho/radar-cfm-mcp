@@ -17,6 +17,16 @@ _COLUNAS = (
 )
 
 
+def _padrao_like(termo: str) -> str:
+    """Padrão ``%termo%`` com ``%``, ``_`` e a barra escapados.
+
+    O termo vem de quem chama a tool. Sem o escape, um tema como "100%" ou
+    "_" vira curinga e casa com a base inteira. Usar sempre com ``ESCAPE '\\'``.
+    """
+    escapado = termo.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escapado}%"
+
+
 def _para_dicts(resultado: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
     colunas = [d[0] for d in resultado.description or []]
     return [dict(zip(colunas, linha, strict=True)) for linha in resultado.fetchall()]
@@ -52,14 +62,14 @@ def buscar_por_tema(
     except duckdb.Error as erro:
         logger.debug("FTS indisponível na consulta (%s); usando LIKE", erro)
 
-    padrao = f"%{tema.strip()}%"
+    padrao = _padrao_like(tema)
     return _para_dicts(
         conexao.execute(
             f"""
             SELECT {_COLUNAS}, NULL AS relevancia
             FROM resolucoes
-            WHERE (lower(coalesce(ementa, '')) LIKE lower(?)
-                   OR lower(coalesce(texto_completo, '')) LIKE lower(?))
+            WHERE (lower(coalesce(ementa, '')) LIKE lower(?) ESCAPE '\\'
+                   OR lower(coalesce(texto_completo, '')) LIKE lower(?) ESCAPE '\\')
               {filtro_vigente}
             ORDER BY data_publicacao DESC, identificador
             LIMIT ?
@@ -199,12 +209,12 @@ def contar_por_tema(
     except duckdb.Error as erro:
         logger.debug("FTS indisponível na contagem (%s); usando LIKE", erro)
 
-    padrao = f"%{tema.strip()}%"
+    padrao = _padrao_like(tema)
     linha = conexao.execute(
         f"""
         SELECT count(*) FROM resolucoes
-        WHERE (lower(coalesce(ementa, '')) LIKE lower(?)
-               OR lower(coalesce(texto_completo, '')) LIKE lower(?))
+        WHERE (lower(coalesce(ementa, '')) LIKE lower(?) ESCAPE '\\'
+               OR lower(coalesce(texto_completo, '')) LIKE lower(?) ESCAPE '\\')
           {filtro_vigente}
         """,
         [padrao, padrao],
@@ -226,26 +236,65 @@ def sem_data_publicacao(conexao: duckdb.DuckDBPyConnection) -> tuple[int, int]:
     return (int(linha[0]), int(linha[1])) if linha else (0, 0)
 
 
+def _filtro_periodo(dias: int, palavras_chave: tuple[str, ...]) -> tuple[str, list[Any]]:
+    """WHERE do monitor: a janela de datas e, se houver, as palavras-chave.
+
+    As palavras entram no SQL, antes do LIMIT. Filtradas depois, em Python, o
+    corte de 50 acontecia primeiro: numa janela longa, as 50 mais recentes
+    eram de outros temas e as do tema sumiam sem aviso.
+    """
+    corte = date.today() - timedelta(days=dias)
+    condicoes = ["data_publicacao >= ?"]
+    parametros: list[Any] = [corte]
+    alvos = [p for p in palavras_chave if p.strip()]
+    if alvos:
+        casamentos = " OR ".join(
+            "lower(coalesce(ementa, '') || ' ' || coalesce(texto_completo, '')) "
+            "LIKE lower(?) ESCAPE '\\'"
+            for _ in alvos
+        )
+        condicoes.append(f"({casamentos})")
+        parametros += [_padrao_like(p) for p in alvos]
+    return " AND ".join(condicoes), parametros
+
+
 def publicadas_no_periodo(
     conexao: duckdb.DuckDBPyConnection,
     *,
     dias: int,
     limite: int = 50,
+    palavras_chave: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    """Resoluções publicadas nos últimos ``dias``."""
-    corte = date.today() - timedelta(days=dias)
+    """Resoluções publicadas nos últimos ``dias``, mais recentes primeiro.
+
+    Com ``palavras_chave``, só as que mencionam alguma delas na ementa ou no
+    texto, filtradas antes do limite.
+    """
+    where, parametros = _filtro_periodo(dias, palavras_chave)
     return _para_dicts(
         conexao.execute(
             f"""
             SELECT {_COLUNAS}
             FROM resolucoes
-            WHERE data_publicacao >= ?
+            WHERE {where}
             ORDER BY data_publicacao DESC, identificador
             LIMIT ?
             """,
-            [corte, limite],
+            [*parametros, limite],
         )
     )
+
+
+def contar_no_periodo(
+    conexao: duckdb.DuckDBPyConnection,
+    *,
+    dias: int,
+    palavras_chave: tuple[str, ...] = (),
+) -> int:
+    """Quantas casam com o mesmo filtro de ``publicadas_no_periodo``, sem limite."""
+    where, parametros = _filtro_periodo(dias, palavras_chave)
+    linha = conexao.execute(f"SELECT count(*) FROM resolucoes WHERE {where}", parametros).fetchone()
+    return int(linha[0]) if linha else 0
 
 
 # Colunas que uma coleta pode simplesmente nao trazer, e que por isso nao podem

@@ -9,7 +9,7 @@ Requer [uv](https://docs.astral.sh/uv/) e Python 3.12+.
 
 ```bash
 uv sync
-cp .env.example .env     # ajuste o endpoint do seu LLM local
+cp .env.example .env     # opcional: os padroes servem para desenvolver
 uv run pytest -q         # testes
 uv run ruff check .      # lint
 uv run ruff format .     # formatacao
@@ -17,7 +17,7 @@ uv run mypy              # tipos
 ```
 
 Os testes rodam **offline**: as respostas das APIs externas estao mockadas com `respx`, e
-as fixtures foram capturadas de respostas reais. Nao e preciso rede nem LLM para testar.
+as fixtures foram capturadas de respostas reais. Nao e preciso rede para testar.
 
 ## Padrao de commit
 
@@ -29,8 +29,9 @@ Antes de abrir o PR, rode os quatro comandos acima. O CI roda os mesmos.
 
 ## Nao rode sincronizacao em loop
 
-O portal do CFM e um site de conselho profissional, nao uma API publica. Ele sao servicos publicos e gratuitos, mantidos com dinheiro publico e
-nao dimensionados para volume automatizado.
+O portal do CFM e um site de conselho profissional, nao uma API publica. E um servico
+publico e gratuito, mantido com dinheiro publico e nao dimensionado para volume
+automatizado.
 
 - Nao rode o sync em loop, nem reduza o intervalo entre requisicoes para testar.
 - Para desenvolver e testar, use as fixtures do diretorio `tests/fixtures/` em vez de

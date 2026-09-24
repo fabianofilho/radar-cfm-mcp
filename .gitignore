@@ -13,3 +13,6 @@ data/
 
 # Scratch de teste manual (cliente HTTP, logs de servidor)
 .tmp/
+
+# Estado local do Claude Code (worktrees, configuracao da sessao)
+.claude/

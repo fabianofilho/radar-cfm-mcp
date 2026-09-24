@@ -10,9 +10,9 @@
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now radar-cfm-connector
 #
-# A coleta NAO roda aqui: ela e um servico separado que constroi a base ao
-# lado e troca por rename. Este processo so le.
-#   cfm-cli sync --publicar
+# A coleta NAO roda aqui: ela e radar-cfm-sync.service (disparada por
+# radar-cfm-sync.timer), que constroi a base ao lado e troca por rename. Este
+# processo so le.
 
 [Unit]
 Description=Servidor MCP do CFM em HTTP (modo connector)

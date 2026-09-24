@@ -8,7 +8,7 @@ import json
 import typer
 
 from radar_cfm_mcp.config import carregar_config
-from radar_cfm_mcp.crawler.sync import sincronizar
+from radar_cfm_mcp.crawler.sync import reextrair_datas, sincronizar
 from radar_cfm_mcp.mcp_server.tools.resolucoes import (
     consultar_resolucao_cfm,
     monitorar_novas_resolucoes,
@@ -76,7 +76,8 @@ def sync(
             indexado = reindexar_fts(conexao)
             typer.echo(
                 f"{resultado.novos} novas, {resultado.atualizados} atualizadas, "
-                f"{resultado.pdfs_baixados} PDFs baixados"
+                f"{resultado.pdfs_baixados} PDFs baixados, "
+                f"{resultado.datas_reextraidas} datas reextraídas do texto"
             )
             typer.echo(f"índice FTS: {'criado' if indexado else 'indisponível (busca por LIKE)'}")
 
@@ -89,6 +90,39 @@ def sync(
             typer.secho(f"base publicada: {publicado}", fg=typer.colors.GREEN)
 
     asyncio.run(rodar())
+
+
+@app.command("reextrair-datas")
+def reextrair(
+    publicar_ao_fim: bool = typer.Option(
+        False,
+        "--publicar",
+        help="Trabalha numa cópia e troca pela servida no fim (modo connector)",
+    ),
+) -> None:
+    """Refaz a data de publicação a partir do texto já gravado, sem tocar no portal.
+
+    Serve para aplicar uma melhoria do extrator de datas à base existente. O
+    sync diário já faz o mesmo passo no fim, então isto só adianta o efeito.
+    """
+    config = carregar_config()
+    alvo = clonar_para_construcao(config.duckdb_path) if publicar_ao_fim else config.duckdb_path
+    with conectar(alvo) as conexao:
+        preenchidas, corrigidas = reextrair_datas(conexao)
+        sem_data = conexao.execute(
+            "SELECT count(*) FROM resolucoes WHERE data_publicacao IS NULL"
+        ).fetchone()
+    typer.echo(
+        f"{preenchidas} datas preenchidas, {corrigidas} corrigidas, "
+        f"{int(sem_data[0]) if sem_data else 0} resoluções continuam sem data"
+    )
+    if publicar_ao_fim:
+        try:
+            publicado = publicar(config.duckdb_path)
+        except BaseSuspeita as erro:
+            typer.secho(f"publicação recusada: {erro}", fg=typer.colors.RED)
+            raise typer.Exit(code=1) from erro
+        typer.secho(f"base publicada: {publicado}", fg=typer.colors.GREEN)
 
 
 @app.command()

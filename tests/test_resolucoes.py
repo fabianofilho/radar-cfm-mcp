@@ -482,3 +482,126 @@ def test_data_nova_substitui_a_antiga(db: duckdb.DuckDBPyConnection) -> None:
     gravar(db, [_registro(data_publicacao=date(2022, 5, 5))])
 
     assert db.execute("SELECT data_publicacao FROM resolucoes").fetchone()[0] == date(2022, 5, 5)
+
+
+def test_data_nos_formatos_que_escapavam() -> None:
+    """NOVA-1: cabeçalhos reais que deixavam 903 resoluções sem data."""
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    # 2373/2023, mês abreviado e publicação no ano seguinte
+    assert extrair("Publicada no D.O.U. de 15 Jan 2024", 2023) == date(2024, 1, 15)
+    # 2304/2022, sem o "de" antes do mês
+    assert extrair("(Publicada no D.O.U. de 23 fevereiro de 2022", 2022) == date(2022, 2, 23)
+    # 2347/2023, extração do PDF com espaços no meio das palavras
+    assert extrair("Publica do e m: 21/09/2023", 2023) == date(2023, 9, 21)
+    assert extrair("(Publicada do D.O.U. de 29 set. 2014, Seção I, p. 183)", 2014) == date(
+        2014, 9, 29
+    )
+    assert extrair("(Publicada no Diário Oficial de 21-5-62)", 1962) == date(1962, 5, 21)
+    assert extrair("(Publicada no D.O. Seção I — Parte II de 24/1 2/73)", 1973) == date(
+        1973, 12, 24
+    )
+    assert extrair("Publicada no D.O.U. de 1º de agosto de 2011, Seção I", 2011) == date(2011, 8, 1)
+
+
+def test_data_de_assinatura_na_linha_seguinte_nao_vira_publicacao() -> None:
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    texto = "entrará em vigor na data de sua publicação.\nRio de Janeiro, 12 de abril de 1986"
+    assert extrair(texto, 1986) is None
+
+
+def test_cabecalho_prevalece_sobre_norma_citada_logo_abaixo() -> None:
+    """2109/2014 ganhava a data de 2013 da resolução que ela altera."""
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    texto = (
+        "RESOLUÇÃO CFM Nº 2.109/2014\n(Publicada no D.O.U. de 31 out. 2014, Seção I)\n"
+        "(Resolução CFM nº 2.023/2013, publicada no\nD.O.U. de 28 de agosto de 2013)"
+    )
+    assert extrair(texto, 2014) == date(2014, 10, 31)
+
+
+def _no_periodo(n: int, *, ementa: str, dias_atras: int, prefixo: int) -> list[dict[str, Any]]:
+    return [
+        _registro(
+            identificador=f"{prefixo + i}/2020",
+            numero=str(prefixo + i),
+            ementa=ementa,
+            data_publicacao=date.today() - timedelta(days=dias_atras + i),
+        )
+        for i in range(n)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_monitor_filtra_o_tema_antes_do_limite(caminho_db: str) -> None:
+    """CFM-2: as 50 mais recentes eram de outro tema e as do tema sumiam."""
+    with conectar(caminho_db) as conexao:
+        gravar(
+            conexao,
+            _no_periodo(60, ementa="Homologa eleição", dias_atras=1, prefixo=100)
+            + _no_periodo(3, ementa="Dispõe sobre telemedicina", dias_atras=400, prefixo=900),
+        )
+
+    r = await monitorar_novas_resolucoes(
+        3650, caminho_db=caminho_db, palavras_chave=("telemedicina",)
+    )
+
+    assert r.total == 3
+    assert r.retornados == 3
+    assert r.truncado is False
+    assert {x.identificador for x in r.resultados} == {"900/2020", "901/2020", "902/2020"}
+
+
+@pytest.mark.asyncio
+async def test_monitor_declara_truncamento(caminho_db: str) -> None:
+    with conectar(caminho_db) as conexao:
+        gravar(conexao, _no_periodo(63, ementa="Homologa eleição", dias_atras=1, prefixo=100))
+
+    r = await monitorar_novas_resolucoes(365, caminho_db=caminho_db)
+
+    assert (r.total, r.retornados, r.truncado) == (63, 50, True)
+    assert r.aviso is not None and "Casaram 63" in r.aviso
+    maior = await monitorar_novas_resolucoes(365, caminho_db=caminho_db, limite=100)
+    assert (maior.retornados, maior.truncado) == (63, False)
+
+
+def test_curinga_do_like_no_tema_e_literal(db: duckdb.DuckDBPyConnection) -> None:
+    """Sem FTS a busca cai para LIKE, e '%' ou '_' no tema não podem casar tudo."""
+    from radar_cfm_mcp.store.queries import contar_por_tema
+
+    gravar(
+        db,
+        [
+            _registro(identificador="1/2020", ementa="Dispõe sobre telemedicina"),
+            _registro(identificador="2/2021", numero="2", ano="2021", ementa="Desconto de 100%"),
+        ],
+    )
+    assert buscar_por_tema(db, "_") == []
+    assert contar_por_tema(db, "%") == 1
+    assert [a["identificador"] for a in buscar_por_tema(db, "100%")] == ["2/2021"]
+
+
+def test_trecho_marca_o_corte_com_reticencias_ascii() -> None:
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    texto = "a" * 400 + " telemedicina " + "b" * 400
+    trecho = _trecho(texto, "telemedicina")
+    assert trecho is not None
+    assert trecho.startswith("...") and trecho.endswith("...")
+    assert "…" not in trecho
+
+
+def test_dezembro_sem_o_primeiro_de() -> None:
+    """O "de" opcional antes do mês não pode comer o começo de "dezembro"."""
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    # 2059/2013 e 1651/2002, cabeçalhos reais que ficavam sem data
+    assert extrair("(Publicada no D.O.U. de 03 dezembro de 2013, Seção I, p. 206)", 2013) == date(
+        2013, 12, 3
+    )
+    assert extrair("(Publicada no D.O.U. de 02 dezembro 2002, Seção I)", 2002) == date(2002, 12, 2)
+    assert extrair("(Publicada no D.O.U. de 03 de dezembro de 2013)", 2013) == date(2013, 12, 3)
+    assert extrair("(Publicada no D.O.U. de 15 dez 2013)", 2013) == date(2013, 12, 15)
+    assert extrair("(Publicada no D.O.U. de 7 de junho de1958)", 1958) == date(1958, 6, 7)

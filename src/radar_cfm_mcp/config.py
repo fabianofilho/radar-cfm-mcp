@@ -19,8 +19,6 @@ class Config(BaseSettings):
         default=("inteligência artificial", "telemedicina", "prontuário eletrônico", "algoritmo")
     )
     duckdb_path: Path = Field(default=Path("./data/cfm.duckdb"))
-    # Horário fixo, não intervalo: os syncs locais são escalonados de madrugada.
-    sync_hora_local: str = Field(default="02:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     log_level: str = Field(default="INFO")
 
     # --- modo connector (servidor HTTP publico) ---

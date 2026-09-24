@@ -1,0 +1,16 @@
+# Dispara radar-cfm-sync.service uma vez por dia, de madrugada.
+
+[Unit]
+Description=Agenda a coleta diaria das resolucoes do CFM
+Documentation=https://github.com/fabianofilho/radar-cfm-mcp
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+# Espalha o disparo em ate 30 min: quem rodar este projeto com o padrao nao
+# bate no portal do CFM no mesmo minuto que os outros.
+RandomizedDelaySec=1800
+# Se a maquina estava desligada no horario, roda assim que ligar.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
