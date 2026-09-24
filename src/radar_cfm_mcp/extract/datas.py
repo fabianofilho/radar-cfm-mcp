@@ -13,14 +13,16 @@ convivem no acervo:
 - ``Publicado em: 17/09/2026`` nas recentes, sem citar o DOU;
 - ``D.O.U. de 24 de setembro de 2019, Seção I, p.107`` no meio do acervo;
 - ``D.O.U. de 15 Jan 2024`` e ``29 set. 2014``, com o mês abreviado;
-- ``D.O.U. de 23 fevereiro de 2022``, sem o primeiro "de";
+- ``D.O.U. de 23 fevereiro de 2022`` e ``02 dezembro 2002``, sem o primeiro "de";
 - ``D.O.U. - de 02/05/2005 - Seção I`` e ``Diário Oficial de 21-5-62`` nas antigas;
 - ``Publica do e m: 21/09/2023``, quando a extração do PDF quebra as palavras.
 
-Cobertura medida sobre as 2.457 resoluções em 24/09/2026: 2.109 com data (86%).
+Cobertura medida sobre as 2.457 resoluções em 24/09/2026: 2.114 com data (86%).
 O que não tem data fica ``None``, e quem consome precisa dizer isso em vez de
-tratar ausência como "não houve publicação". Boa parte do que sobra é cabeçalho
-sem data no próprio PDF ("Publicada no D.O. Seção I, Parte II de", e nada depois).
+tratar ausência como "não houve publicação". Das 343 que sobram, 332 não têm
+dígito na linha da âncora ("Publicada no D.O. Seção I, Parte II de", e nada depois).
+As 11 restantes trazem ano truncado ("22/12/199"), dia sem mês ("de de 2018"),
+lixo de OCR ("d3 8/7/69"), a lei de 1957 citada ou data a mais de um ano da norma.
 """
 
 from __future__ import annotations
@@ -63,8 +65,10 @@ _ANCORA = re.compile(
 )
 _NUMERICA = re.compile(r"(\d{1,2})\s?[/\-.]\s?(\d{1,2})\s?[/\-.]\s?(\d{2,4})")
 # "24 de setembro de 2019", "23 fevereiro de 2022", "15 Jan 2024", "29 set. 2014",
-# "1º de agosto de 2011", "7 de junho de1958".
-_EXTENSO = re.compile(r"(\d{1,2})[º°]?\s*(?:de\s*)?([a-zç]{3,9})\.?\s*(?:de\s*)?(\d{4})", re.I)
+# "1º de agosto de 2011", "7 de junho de1958", "03 dezembro de 2013".
+# O primeiro "de" exige espaço depois: com ``de\s*`` ele comia o começo de
+# "dezembro", o mês virava "zembro" e a data se perdia sem volta.
+_EXTENSO = re.compile(r"(\d{1,2})[º°]?\s*(?:de\s+)?([a-zç]{3,9})\.?\s*(?:de\s*)?(\d{4})", re.I)
 
 # O cabeçalho fica no começo. Mais adiante o texto cita OUTRAS normas com as
 # datas delas, e foi assim que uma resolução de 2025 ganhou data de 1993.

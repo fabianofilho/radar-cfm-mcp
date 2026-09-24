@@ -591,3 +591,17 @@ def test_trecho_marca_o_corte_com_reticencias_ascii() -> None:
     assert trecho is not None
     assert trecho.startswith("...") and trecho.endswith("...")
     assert "…" not in trecho
+
+
+def test_dezembro_sem_o_primeiro_de() -> None:
+    """O "de" opcional antes do mês não pode comer o começo de "dezembro"."""
+    from radar_cfm_mcp.extract.datas import extrair_data_publicacao as extrair
+
+    # 2059/2013 e 1651/2002, cabeçalhos reais que ficavam sem data
+    assert extrair("(Publicada no D.O.U. de 03 dezembro de 2013, Seção I, p. 206)", 2013) == date(
+        2013, 12, 3
+    )
+    assert extrair("(Publicada no D.O.U. de 02 dezembro 2002, Seção I)", 2002) == date(2002, 12, 2)
+    assert extrair("(Publicada no D.O.U. de 03 de dezembro de 2013)", 2013) == date(2013, 12, 3)
+    assert extrair("(Publicada no D.O.U. de 15 dez 2013)", 2013) == date(2013, 12, 15)
+    assert extrair("(Publicada no D.O.U. de 7 de junho de1958)", 1958) == date(1958, 6, 7)

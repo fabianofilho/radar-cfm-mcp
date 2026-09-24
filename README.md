@@ -302,8 +302,8 @@ silêncio, mas vai falhar.
 
 **Nem toda resolução tem data de publicação.** A data sai do cabeçalho do texto, e o
 campo de data do portal não serve (é a data de carga no sistema deles). Com o extrator
-desta versão, medido em 24/09/2026 sobre uma cópia da base, 348 das 2.457 continuam sem
-data, a maioria antigas cujo PDF traz o cabeçalho sem a data ("Publicada no D.O. Seção
+desta versão, medido em 24/09/2026 sobre uma cópia da base, 343 das 2.457 continuam sem
+data, quase todas antigas cujo PDF traz o cabeçalho sem a data ("Publicada no D.O. Seção
 I, Parte II de", e mais nada). Essas não entram em `monitorar_novas_resolucoes`, que
 informa quantas são em `sem_data_publicacao`.
 

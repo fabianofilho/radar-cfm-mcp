@@ -35,8 +35,8 @@ Primeira versão publicada.
   50 vinha primeiro e, numa janela longa, as resoluções do tema sumiam sem aviso. A
   resposta ganhou `total`, `retornados` e `truncado`, e a tool ganhou `limite`.
 - O extrator de data de publicação passou a ler mês abreviado, mês sem o primeiro
-  "de", texto com espaços quebrados, "D.O." sem o U e datas com hífen. Numa cópia da
-  base, 851 das 1.199 resoluções sem data ganharam data e 14 datas erradas (de outra
+  "de" (inclusive "03 dezembro de 2013"), texto com espaços quebrados, "D.O." sem o U e datas com hífen. Numa cópia da
+  base, 856 das 1.199 resoluções sem data ganharam data e 14 datas erradas (de outra
   norma citada no cabeçalho) foram corrigidas.
 - O sync recalcula a data a partir do texto já gravado ao fim de cada coleta, e o
   comando `cfm-cli reextrair-datas` faz o mesmo sem tocar no portal.
