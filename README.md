@@ -15,6 +15,32 @@ local pesquisável e sempre devolve o link do documento oficial.
 > - **Sem validação jurídica.** Isto é uma ferramenta de busca, não uma interpretação
 >   normativa.
 
+## Connector hospedado
+
+Há uma instância pública deste servidor, mantida pelo autor, para quem quer usar sem
+instalar nada:
+
+```
+https://mcp.tailf42a96.ts.net/cfm/mcp
+```
+
+- **No Claude (web ou desktop):** Configurações, Conectores, adicionar conector
+  personalizado, e colar a URL acima.
+- **No Claude Code:** `claude mcp add --transport http radar-cfm https://mcp.tailf42a96.ts.net/cfm/mcp`
+
+Antes de usar, saiba o que ela é:
+
+- **Os dados são públicos, do CFM.** A base é uma cópia do que o portal de normas
+  publica, atualizada uma vez por dia de madrugada. O aviso acima vale inteiro: não é
+  fonte oficial.
+- **Sem garantia de disponibilidade.** Roda numa máquina pessoal exposta pelo Tailscale
+  Funnel. Pode ficar fora do ar, mudar de endereço ou ser desligada sem aviso. Para uso
+  de que você dependa, rode a sua (instruções abaixo).
+- **Sem autenticação, com limites.** Qualquer pessoa pode chamar. Por isso há teto de
+  requisições (600 por minuto por origem e 1.200 por minuto no total) e teto nos
+  parâmetros (`limite` até 100, `dias` até 3.650). Acima disso a chamada é recusada.
+- **O que você consulta passa por essa máquina.** Veja [Privacidade](#privacidade).
+
 ## Requisitos
 
 | O quê | Versão | Para quê |
@@ -39,15 +65,15 @@ cp .env.example .env
 | Variável | Padrão | Observação |
 | --- | --- | --- |
 | `CRAWLER_DELAY_SEGUNDOS` | `2` | intervalo entre requisições ao portal |
-| `PALAVRAS_CHAVE` | IA, telemedicina, prontuário eletrônico, algoritmo | separadas por vírgula |
+| `PALAVRAS_CHAVE` | inteligência artificial, telemedicina, prontuário eletrônico, algoritmo | separadas por vírgula; decidem quais PDFs o sync padrão baixa (pela ementa) e o filtro de `monitorar_novas_resolucoes` (ementa e texto) |
 | `DUCKDB_PATH` | `./data/cfm.duckdb` | base local |
-| `SYNC_HORA_LOCAL` | `02:00` | horário fixo do sync agendado |
 
 ```bash
 uv run cfm-cli sync --max-paginas 3    # teste rápido
 uv run cfm-cli sync                    # varredura completa (~8 min com delay de 2s)
 uv run cfm-cli consultar telemedicina
 uv run cfm-cli novas --dias 90
+uv run cfm-cli reextrair-datas         # refaz as datas a partir do texto já gravado
 uv run cfm-cli schema
 ```
 
@@ -61,19 +87,24 @@ claude mcp add radar-cfm --scope user \
 
 ## Uso
 
-### `consultar_resolucao_cfm(tema: str, apenas_vigentes=True)`
+### `consultar_resolucao_cfm(tema: str, apenas_vigentes=True, limite=10)`
+
+`limite` vai de 1 a 100. Um tema que seja o número de uma resolução (`2314/2022`,
+`2.314`) busca aquela norma diretamente, inclusive revogada.
 
 ```json
 {
   "tema": "inteligência artificial",
   "total": 1,
+  "retornados": 1,
+  "truncado": false,
   "resultados": [
     {
       "identificador": "2454/2026",
       "ementa": "Normatiza o uso da inteligência artificial na medicina.",
       "vigente": true,
       "revogada_por": null,
-      "trecho_relevante": "…Normatiza o uso da inteligência artificial na medicina. O CONSELHO FEDERAL DE MEDICINA…",
+      "trecho_relevante": "...Normatiza o uso da inteligência artificial na medicina. O CONSELHO FEDERAL DE MEDICINA...",
       "url_origem": "https://sistemas.cfm.org.br/normas/visualizar/resolucoes/BR/2026/2454",
       "texto_completo_disponivel": true
     }
@@ -82,11 +113,17 @@ claude mcp add radar-cfm --scope user \
 ```
 
 Ordena por relevância (BM25 do FTS do DuckDB) e depois por data. Revogadas vêm com
-`vigente: false` e o número da que substituiu.
+`vigente: false` e o número da que substituiu. `total` é quantas casam na base
+inteira; `truncado: true` quer dizer que há mais do que veio.
 
-### `monitorar_novas_resolucoes(dias=30, filtrar_tema=True)`
+### `monitorar_novas_resolucoes(dias=30, filtrar_tema=True, limite=50)`
 
-O que foi publicado na janela, filtrado pelos temas configurados.
+O que foi publicado nos últimos `dias` (1 a 3.650), mais recentes primeiro, até
+`limite` (1 a 100). Com `filtrar_tema`, só as que citam alguma das `PALAVRAS_CHAVE`
+na ementa ou no texto; o filtro é aplicado antes do limite. A resposta traz `total`,
+`retornados`, `truncado` e `sem_data_publicacao`: a janela usa a data extraída do
+texto, e as resoluções sem data ficam de fora, então total zero com muitas sem data
+quer dizer "não sei", não "nada foi publicado".
 
 ## Como a fonte funciona
 
@@ -109,8 +146,9 @@ Dois detalhes que moldaram o desenho:
 
 - intervalo configurável entre requisições (padrão 2s);
 - o mesmo PDF nunca é baixado duas vezes (cache por hash da URL);
-- **PDF só é baixado quando a ementa casa com alguma palavra-chave.** Baixar as 2.457
-  seria abusivo, e a ementa já basta para a triagem.
+- **Por padrão, o PDF só é baixado quando a ementa casa com alguma palavra-chave.** A
+  instância hospedada baixou as 2.457 uma vez, e a coleta diária dela só baixa o que é
+  novo (ver "Texto integral" abaixo).
 
 ## Modo connector (servidor HTTP)
 
@@ -167,8 +205,13 @@ uv run cfm-cli sync --texto-integral --max-pdfs 0 --publicar
 ```
 
 Com o intervalo padrão de 2s entre requisições, a primeira execução leva perto de uma
-hora e meia e ocupa cerca de 500 MB em `data/pdfs`. O cache em disco evita repetir: as
-execuções seguintes só baixam o que é novo.
+hora e meia e ocupa cerca de 250 MB em `data/pdfs`. O cache em disco evita repetir, e
+resolução que já tem texto na base nem volta ao parser: as execuções seguintes só
+baixam o que é novo.
+
+A coleta diária de `deploy/radar-cfm-sync.service` roda com `--texto-integral
+--max-pdfs 25`. Sem isso, uma resolução nova fora de IA e telemedicina entraria sem
+texto e, portanto, sem data de publicação, e nunca apareceria no monitoramento.
 
 **A coleta seguinte não apaga o texto.** Quem roda o sync diário sem `--texto-integral`
 não traz PDF nenhum, e um upsert comum sobrescreveria as extrações com nulo. A coluna
@@ -177,23 +220,32 @@ significa "não busquei desta vez", nunca "a norma ficou sem texto".
 
 ### Rodar como serviço
 
-`deploy/radar-cfm-connector.service` é uma unit de usuário pronta, testada nesta configuração:
+`deploy/` tem as units de usuário do systemd que rodam a instância hospedada. Elas
+assumem o repositório em `~/radar-cfm-mcp` e o `uv` em `~/.local/bin/uv`; ajuste os
+caminhos se o seu for outro.
+
+| Unit | O que faz |
+| --- | --- |
+| `radar-cfm-connector.service` | o servidor HTTP (modo connector), só leitura |
+| `radar-cfm-sync.service` | uma coleta com `--publicar --texto-integral --max-pdfs 25` |
+| `radar-cfm-sync.timer` | dispara a coleta todo dia às 02:00, com até 30 min de espalhamento |
 
 ```bash
-cp deploy/radar-cfm-connector.service ~/.config/systemd/user/
+cp deploy/radar-cfm-connector.service deploy/radar-cfm-sync.service \
+   deploy/radar-cfm-sync.timer ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now radar-cfm-connector
+systemctl --user enable --now radar-cfm-connector.service radar-cfm-sync.timer
 ```
+
+O timer do systemd é o único agendador: o projeto não tem agendador interno. Para
+rodar uma coleta fora do horário, `systemctl --user start radar-cfm-sync.service`, e o
+resultado sai em `journalctl --user -u radar-cfm-sync`.
 
 Ela **escuta só em 127.0.0.1**. Expor para fora é uma camada à parte, um proxy reverso
 com TLS ou um túnel, que aponta para essa porta. Manter assim deixa a decisão de expor
 num lugar só, em vez de espalhada em variável de ambiente.
 
-O serviço só lê. Quem escreve é a coleta, que roda separada e troca o arquivo por rename:
-
-```bash
-cfm-cli sync --publicar
-```
+O serviço só lê. Quem escreve é a coleta, que roda separada e troca o arquivo por rename.
 
 Se o processo morrer, o systemd sobe de novo em 5 segundos (`Restart=always`).
 
@@ -248,15 +300,38 @@ como revogado. Revogação parcial ou alteração por outra resolução não apa
 mensagem explícita (`resultadoBuscaJson não encontrado`) em vez de devolver vazio em
 silêncio, mas vai falhar.
 
+**Nem toda resolução tem data de publicação.** A data sai do cabeçalho do texto, e o
+campo de data do portal não serve (é a data de carga no sistema deles). Com o extrator
+desta versão, medido em 24/09/2026 sobre uma cópia da base, 348 das 2.457 continuam sem
+data, a maioria antigas cujo PDF traz o cabeçalho sem a data ("Publicada no D.O. Seção
+I, Parte II de", e mais nada). Essas não entram em `monitorar_novas_resolucoes`, que
+informa quantas são em `sem_data_publicacao`.
+
+**O portal erra o ano em `revogada_por`.** A Resolução 1.643/2002 vem como revogada pela
+"2314/2024", e a 2.314 é de 2022. O valor fica como o CFM publica, mas a resposta marca
+`revogada_por_confere: false` e sugere a provável em `revogada_por_provavel`, que é
+inferência nossa.
+
 **A busca cai para `LIKE` sem o FTS.** A extensão full-text do DuckDB é baixada na primeira
 execução. Sem rede, a busca continua respondendo, mais lenta e sem ranking.
 
 ## Privacidade
 
+**Rodando localmente (stdio):**
+
 - **Sai da máquina:** requisições ao `portal.cfm.org.br` e ao `sistemas.cfm.org.br`, para
-  a busca e os PDFs públicos.
+  a busca e os PDFs públicos, só durante o sync.
 - **Não sai:** os temas que você consulta. A busca roda contra a base local.
-- Sem LLM, sem telemetria, sem analytics.
+
+**Usando o connector hospedado:**
+
+- **Sai da sua máquina:** os parâmetros de cada chamada (tema, dias, limite) vão para o
+  servidor do autor, passando pelo Tailscale Funnel.
+- **O que o servidor guarda:** o código deste projeto não registra os temas consultados.
+  O único registro por requisição é o IP de origem quando uma chamada é recusada por
+  limite de taxa.
+
+Nos dois modos: sem LLM, sem telemetria, sem analytics.
 
 ## Contribuindo
 
