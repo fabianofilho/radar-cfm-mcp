@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -17,18 +18,14 @@ from radar_cfm_mcp.store.queries import gravar
 
 logger = logging.getLogger(__name__)
 
-# Espalha o disparo dentro de meia hora. Num projeto publico isso nao e
-# detalhe: horario fixo resolve a concorrencia na maquina de quem roda, mas
-# cria concorrencia do outro lado se varias pessoas usarem o padrao do
-# .env.example e baterem no mesmo servidor no mesmo minuto.
-JITTER_SEGUNDOS = 1800
-
 
 @dataclass(frozen=True)
 class ResultadoSync:
     novos: int
     atualizados: int
     pdfs_baixados: int
+    # Datas preenchidas ou corrigidas a partir do texto que ja estava na base.
+    datas_reextraidas: int = 0
 
     @property
     def total(self) -> int:
@@ -82,6 +79,16 @@ async def sincronizar(
     """
     cache = CachePdf(diretorio_cache)
     baixados = 0
+    # Quem ja tem texto na base nao precisa do PDF de novo: o upsert preserva o
+    # texto e a data quando a coleta traz nulo. Sem isto, o sync diario com
+    # --texto-integral releria as 2.457 do cache toda noite. A marca de
+    # extracao incompleta vai junto, senao a coleta a apagaria.
+    ja_lidas: dict[str, bool] = dict(
+        conexao.execute(
+            "SELECT identificador, metadados_incompletos FROM resolucoes "
+            "WHERE texto_completo IS NOT NULL AND texto_completo <> ''"
+        ).fetchall()
+    )
 
     async with CrawlerCFM(delay_segundos=delay_segundos) as crawler:
         resolucoes = await crawler.varrer(max_paginas=max_paginas)
@@ -91,6 +98,11 @@ async def sincronizar(
 
         registros: list[dict[str, Any]] = []
         for resolucao in resolucoes:
+            if resolucao.identificador in ja_lidas:
+                registros.append(
+                    _registro(resolucao, metadados_incompletos=ja_lidas[resolucao.identificador])
+                )
+                continue
             relevante = texto_integral or casa_palavras_chave(resolucao.ementa, palavras_chave)
             if not relevante:
                 registros.append(_registro(resolucao))
@@ -121,28 +133,51 @@ async def sincronizar(
             )
 
     novos, atualizados = gravar(conexao, registros)
-    logger.info("CFM: %d novos, %d atualizados, %d PDFs baixados", novos, atualizados, baixados)
-    return ResultadoSync(novos=novos, atualizados=atualizados, pdfs_baixados=baixados)
+    reextraidas = sum(reextrair_datas(conexao))
+    logger.info(
+        "CFM: %d novos, %d atualizados, %d PDFs baixados, %d datas reextraidas",
+        novos,
+        atualizados,
+        baixados,
+        reextraidas,
+    )
+    return ResultadoSync(
+        novos=novos,
+        atualizados=atualizados,
+        pdfs_baixados=baixados,
+        datas_reextraidas=reextraidas,
+    )
 
 
-def agendar_sync(caminho_db: str, hora_local: str, palavras_chave: tuple[str, ...]) -> Any:
-    """Agenda a varredura num horário fixo e devolve o scheduler iniciado."""
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+def reextrair_datas(conexao: duckdb.DuckDBPyConnection) -> tuple[int, int]:
+    """Refaz a data de publicacao a partir do texto que ja esta na base.
 
-    from radar_cfm_mcp.store.db import conectar, reindexar_fts
+    O extrator melhora com o tempo, mas a data so era calculada quando o PDF
+    passava pelo parser, e o sync nao rele o que ja tem texto. Sem este passo,
+    uma correcao no extrator nunca chegaria as resolucoes antigas. Roda sobre o
+    texto gravado, sem tocar no portal.
 
-    async def tarefa() -> None:
-        try:
-            with conectar(caminho_db) as conexao:
-                await sincronizar(conexao, palavras_chave=palavras_chave)
-                reindexar_fts(conexao)
-        except Exception:  # noqa: BLE001 - o agendador não pode morrer por um sync
-            logger.exception("sync do CFM falhou")
-
-    hora, minuto = (int(p) for p in hora_local.split(":"))
-    scheduler = AsyncIOScheduler()
-    # jitter: ver JITTER_SEGUNDOS no topo do modulo
-    scheduler.add_job(tarefa, "cron", hour=hora, minute=minuto, jitter=JITTER_SEGUNDOS)
-    scheduler.start()
-    logger.info("sync do CFM agendado diariamente às %s", hora_local)
-    return scheduler
+    So escreve quando o extrator acha uma data: ausencia nao apaga data que ja
+    existia. Devolve (preenchidas, corrigidas), onde corrigida e a que tinha
+    data diferente, tipicamente a de outra norma citada no cabecalho.
+    """
+    linhas = conexao.execute(
+        "SELECT identificador, ano, data_publicacao, texto_completo FROM resolucoes "
+        "WHERE texto_completo IS NOT NULL AND texto_completo <> ''"
+    ).fetchall()
+    preenchidas = corrigidas = 0
+    mudancas: list[tuple[date, str]] = []
+    for identificador, ano, atual, texto in linhas:
+        nova = extrair_data_publicacao(texto, ano)
+        if nova is None or nova == atual:
+            continue
+        mudancas.append((nova, identificador))
+        if atual is None:
+            preenchidas += 1
+        else:
+            corrigidas += 1
+    if mudancas:
+        conexao.executemany(
+            "UPDATE resolucoes SET data_publicacao = ? WHERE identificador = ?", mudancas
+        )
+    return preenchidas, corrigidas
