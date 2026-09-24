@@ -147,10 +147,29 @@ def test_limite_e_por_origem() -> None:
 def test_origem_usa_forwarded_for_quando_ha_proxy() -> None:
     """Atrás de proxy, o IP do socket é o do proxy: todos viram a mesma origem."""
     scope = {
-        "headers": [(b"x-forwarded-for", b"203.0.113.9, 10.0.0.1")],
-        "client": ("10.0.0.1", 5000),
+        "headers": [(b"x-forwarded-for", b"1.2.3.4, 203.0.113.9")],
+        "client": ("127.0.0.1", 5000),
     }
+    # Vale a entrada que o proxy local acrescentou (a ultima), nao a do cliente.
     assert origem_da_requisicao(scope) == "203.0.113.9"
+
+
+def test_origem_ignora_forwarded_for_de_quem_nao_e_proxy() -> None:
+    scope = {
+        "headers": [(b"x-forwarded-for", b"203.0.113.9")],
+        "client": ("198.51.100.7", 5000),
+    }
+    assert origem_da_requisicao(scope) == "198.51.100.7"
+
+
+def test_tabela_cheia_recusa(monkeypatch: pytest.MonkeyPatch) -> None:
+    from radar_cfm_mcp.mcp_server import limite
+
+    monkeypatch.setattr(limite, "MAX_ORIGENS", 2)
+    limitador = LimitadorPorOrigem(100)
+    assert limitador.permitir("a") and limitador.permitir("b")
+    assert not limitador.permitir("c")
+    assert limitador.motivo_ultima_recusa == "tabela"
 
 
 def test_origem_cai_para_o_socket_sem_proxy() -> None:

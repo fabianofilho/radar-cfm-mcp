@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
+from pydantic import Field
 
 from radar_cfm_mcp.config import carregar_config
 from radar_cfm_mcp.mcp_server.capacidades import esconder_o_que_nao_existe
@@ -23,10 +24,17 @@ logger = logging.getLogger(__name__)
 
 mcp = MCPServer("radar-cfm-mcp", version="0.1.0")
 
+# Tetos dos parametros das tools. O connector e publico: sem teto, uma chamada
+# com limite enorme devolve a base inteira e um cliente em laco multiplica isso.
+LIMITE_MAXIMO = 100
+DIAS_MAXIMO = 3650
+
 
 @mcp.tool()
 async def consultar_resolucao_cfm(
-    tema: str, apenas_vigentes: bool = True, limite: int = 10
+    tema: str,
+    apenas_vigentes: bool = True,
+    limite: Annotated[int, Field(ge=1, le=LIMITE_MAXIMO)] = 10,
 ) -> RespostaConsulta:
     """Consulta resoluções do CFM relacionadas a um tema.
 
@@ -61,7 +69,8 @@ async def consultar_resolucao_cfm(
 
 @mcp.tool()
 async def monitorar_novas_resolucoes(
-    dias: int = 30, filtrar_tema: bool = True
+    dias: Annotated[int, Field(ge=1, le=DIAS_MAXIMO)] = 30,
+    filtrar_tema: bool = True,
 ) -> RespostaMonitoramento:
     """Resoluções do CFM publicadas nos últimos dias.
 
