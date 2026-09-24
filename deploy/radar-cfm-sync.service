@@ -1,0 +1,33 @@
+# Coleta diaria do CFM para a base servida pelo connector.
+#
+# Varre a busca de normas do portal, baixa o PDF das resolucoes que ainda nao
+# tem texto na base e troca a base servida por rename no fim (--publicar), sem
+# travar o servidor que esta lendo.
+#
+# --texto-integral: toda resolucao nova ganha o texto do PDF, nao so as que
+# tocam em IA ou telemedicina. Sem o texto a resolucao fica sem data de
+# publicacao e nunca aparece em monitorar_novas_resolucoes. O cache em
+# data/pdfs e o texto ja gravado evitam rebaixar: numa noite comum sao zero ou
+# poucos PDFs. --max-pdfs limita o que uma execucao pode baixar.
+#
+# Disparado por radar-cfm-sync.timer. Instalar:
+#   cp deploy/radar-cfm-sync.service deploy/radar-cfm-sync.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now radar-cfm-sync.timer
+
+[Unit]
+Description=Coleta as resolucoes do CFM e publica a base
+Documentation=https://github.com/fabianofilho/radar-cfm-mcp
+# Sem rede, o sync falha e o timer tenta de novo no dia seguinte.
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/radar-cfm-mcp
+ExecStart=%h/.local/bin/uv --directory %h/radar-cfm-mcp run cfm-cli sync --publicar --texto-integral --max-pdfs 25
+# A varredura das 246 paginas leva uns 8 minutos com o intervalo de 2s entre
+# requisicoes; o teto cobre uma noite com os 25 PDFs e rede lenta.
+TimeoutStartSec=3600
+# Nao compete com o uso interativo da maquina.
+Nice=10
+IOSchedulingClass=idle
