@@ -237,6 +237,12 @@ systemctl --user daemon-reload
 systemctl --user enable --now radar-cfm-connector.service radar-cfm-sync.timer
 ```
 
+A unit do connector vem com `HTTP_HOSTS_PUBLICOS=` vazio. Preencha com o nome público
+do túnel ou proxy antes de habilitar, senão tudo que chega de fora recebe 421. Para
+atualizar só a coleta numa máquina que já roda o connector, copie apenas
+`radar-cfm-sync.service` e `radar-cfm-sync.timer` e rode `systemctl --user
+daemon-reload`; assim o nome público já configurado no connector não se perde.
+
 O timer do systemd é o único agendador: o projeto não tem agendador interno. Para
 rodar uma coleta fora do horário, `systemctl --user start radar-cfm-sync.service`, e o
 resultado sai em `journalctl --user -u radar-cfm-sync`.
