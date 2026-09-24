@@ -246,8 +246,8 @@ def _trecho(texto: str | None, termo: str, *, janela: int = 260) -> str | None:
 
     inicio = max(0, posicao - janela // 2)
     fim = min(len(texto), posicao + janela // 2)
-    prefixo = "…" if inicio > 0 else ""
-    sufixo = "…" if fim < len(texto) else ""
+    prefixo = "..." if inicio > 0 else ""
+    sufixo = "..." if fim < len(texto) else ""
     return f"{prefixo}{texto[inicio:fim].strip()}{sufixo}"
 
 

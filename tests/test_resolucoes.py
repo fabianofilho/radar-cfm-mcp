@@ -581,3 +581,13 @@ def test_curinga_do_like_no_tema_e_literal(db: duckdb.DuckDBPyConnection) -> Non
     assert buscar_por_tema(db, "_") == []
     assert contar_por_tema(db, "%") == 1
     assert [a["identificador"] for a in buscar_por_tema(db, "100%")] == ["2/2021"]
+
+
+def test_trecho_marca_o_corte_com_reticencias_ascii() -> None:
+    from radar_cfm_mcp.mcp_server.tools.resolucoes import _trecho
+
+    texto = "a" * 400 + " telemedicina " + "b" * 400
+    trecho = _trecho(texto, "telemedicina")
+    assert trecho is not None
+    assert trecho.startswith("...") and trecho.endswith("...")
+    assert "…" not in trecho
