@@ -120,6 +120,56 @@ def buscar_por_identificador(
     )
 
 
+def anotar_revogacao(
+    conexao: duckdb.DuckDBPyConnection,
+    linhas: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Diz se o alvo da revogação existe, e qual seria o provável quando não.
+
+    O portal do CFM erra o ano em ``ANO_REVOGADA``: a Resolução 1643/2002 vem
+    apontando para "2314/2024", e a 2314 é de 2022. Auditado contra a fonte em
+    22/09/2026, nos seis casos da base o portal entrega exatamente isso, então é
+    erro da fonte e não da coleta.
+
+    O valor de ``revogada_por`` fica como veio, porque é o que o órgão publica.
+    Mas repassar um identificador que não existe faz quem consulta procurar uma
+    norma inexistente, e a revogação é justamente o que não pode passar batido.
+    Quando há uma única resolução com aquele número, ela vai em
+    ``revogada_por_provavel``, marcada como inferência nossa.
+    """
+    alvos = {str(linha["revogada_por"]) for linha in linhas if linha.get("revogada_por")}
+    if not alvos:
+        return linhas
+
+    marcadores = ", ".join("?" for _ in alvos)
+    existentes = {
+        linha[0]
+        for linha in conexao.execute(
+            f"SELECT identificador FROM resolucoes WHERE identificador IN ({marcadores})",
+            list(alvos),
+        ).fetchall()
+    }
+
+    provaveis: dict[str, str] = {}
+    for alvo in alvos - existentes:
+        numero = alvo.split("/")[0]
+        candidatos = conexao.execute(
+            "SELECT identificador FROM resolucoes WHERE numero = ?", [numero]
+        ).fetchall()
+        # Mais de um ano com o mesmo numero nao permite escolher sem chutar.
+        if len(candidatos) == 1:
+            provaveis[alvo] = candidatos[0][0]
+
+    for linha in linhas:
+        publicado = linha.get("revogada_por")
+        if not publicado:
+            continue
+        publicado = str(publicado)
+        linha["revogada_por_confere"] = publicado in existentes
+        linha["revogada_por_provavel"] = provaveis.get(publicado)
+    return linhas
+
+
 def contar_por_tema(
     conexao: duckdb.DuckDBPyConnection,
     tema: str,

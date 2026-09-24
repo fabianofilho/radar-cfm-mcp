@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from radar_cfm_mcp.extract.vigencia import detectar_suspensao
 from radar_cfm_mcp.store.db import BaseIndisponivel, conectar
 from radar_cfm_mcp.store.queries import (
+    anotar_revogacao,
     buscar_por_identificador,
     buscar_por_tema,
     contar_por_tema,
@@ -43,6 +44,11 @@ AVISO_SO_EMENTA = (
     "a ementa. O projeto baixa o PDF apenas das resoluções cuja ementa toca em IA ou "
     "telemedicina, que é o escopo dele. Para os demais temas, o conteúdo dos artigos "
     "não foi lido: abra a URL antes de afirmar o que a norma diz."
+)
+AVISO_REVOGACAO_QUEBRADA = (
+    "Há resultado cujo 'revogada_por' aponta para uma resolução que não existe: o portal "
+    "do CFM erra o ano nesses casos. Quando dá para identificar pelo número, a candidata "
+    "vem em 'revogada_por_provavel', que é inferência nossa. Confirme na URL de origem."
 )
 AVISO_POR_NUMERO = (
     "O tema foi lido como o número de uma resolução, então a busca foi direta e "
@@ -102,7 +108,29 @@ class ResolucaoCFM(BaseModel):
     nota_vigencia: str | None = Field(
         default=None, description="O texto da marcação, como o CFM escreveu"
     )
-    revogada_por: str | None = None
+    revogada_por: str | None = Field(
+        default=None,
+        description=(
+            "Identificador da resolução que revogou esta, como o portal do CFM publica. "
+            "Confira 'revogada_por_confere' antes de citar: o portal erra o ano em "
+            "alguns casos."
+        ),
+    )
+    revogada_por_confere: bool | None = Field(
+        default=None,
+        description=(
+            "False quando o identificador acima não existe na base, ou seja, o portal "
+            "publicou um ano que não bate. Nesse caso veja 'revogada_por_provavel'."
+        ),
+    )
+    revogada_por_provavel: str | None = Field(
+        default=None,
+        description=(
+            "Única resolução com aquele número, quando o identificador publicado não "
+            "existe. É inferência nossa a partir do número, não o que o CFM publicou: "
+            "confirme na URL de origem antes de citar."
+        ),
+    )
     url_origem: str
     url_pdf: str
     texto_completo_disponivel: bool
@@ -220,6 +248,8 @@ def _para_modelo(linha: dict[str, Any], termo: str | None = None) -> ResolucaoCF
         ementa=linha.get("ementa") or None,
         trecho_relevante=_trecho(texto, termo) if termo else None,
         vigente=bool(linha.get("vigente", True)),
+        revogada_por_confere=linha.get("revogada_por_confere"),
+        revogada_por_provavel=linha.get("revogada_por_provavel"),
         suspensa=suspensao.suspensa,
         suspensao_parcial=suspensao.parcial,
         nota_vigencia=suspensao.nota,
@@ -276,9 +306,11 @@ async def consultar_resolucao_cfm(
             numero, ano = endereco
             achadas = buscar_por_identificador(c, numero, ano)
             if achadas:
-                return achadas, len(achadas)
+                return anotar_revogacao(c, achadas), len(achadas)
         return (
-            buscar_por_tema(c, tema, limite=limite, apenas_vigentes=apenas_vigentes),
+            anotar_revogacao(
+                c, buscar_por_tema(c, tema, limite=limite, apenas_vigentes=apenas_vigentes)
+            ),
             contar_por_tema(c, tema, apenas_vigentes=apenas_vigentes),
         )
 
@@ -306,6 +338,8 @@ async def consultar_resolucao_cfm(
         avisos.append(AVISO_SUSPENSA)
     if endereco is not None and resultados:
         avisos.append(AVISO_POR_NUMERO)
+    if any(r.revogada_por_confere is False for r in resultados):
+        avisos.append(AVISO_REVOGACAO_QUEBRADA)
     return RespostaConsulta(
         tema=tema,
         total=total,
@@ -333,7 +367,10 @@ async def monitorar_novas_resolucoes(
         )
 
     def consultar(c: duckdb.DuckDBPyConnection) -> tuple[list[dict[str, Any]], tuple[int, int]]:
-        return publicadas_no_periodo(c, dias=dias, limite=limite), sem_data_publicacao(c)
+        return (
+            anotar_revogacao(c, publicadas_no_periodo(c, dias=dias, limite=limite)),
+            sem_data_publicacao(c),
+        )
 
     vazio: tuple[list[dict[str, Any]], tuple[int, int]] = ([], (0, 0))
     (linhas, (sem_data, total_base)), aviso = _ler(caminho_db, consultar, padrao=vazio)

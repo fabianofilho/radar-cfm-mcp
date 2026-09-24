@@ -406,3 +406,59 @@ async def test_aviso_de_busca_por_palavra_nao_depende_de_truncar(caminho_db: str
 
     assert r.truncado is False
     assert r.aviso is not None and "qualquer palavra do tema" in r.aviso
+
+
+def test_revogacao_para_alvo_inexistente_e_sinalizada(db: duckdb.DuckDBPyConnection) -> None:
+    """O portal erra o ano: a 1643/2002 aponta para '2314/2024', e a 2314 é de 2022."""
+    from radar_cfm_mcp.store.queries import anotar_revogacao
+
+    gravar(
+        db,
+        [
+            _registro(
+                identificador="1643/2002",
+                numero="1643",
+                ano="2002",
+                vigente=False,
+                revogada_por="2314/2024",
+            ),
+            _registro(identificador="2314/2022", numero="2314", ano="2022"),
+        ],
+    )
+
+    linhas = anotar_revogacao(db, [{"identificador": "1643/2002", "revogada_por": "2314/2024"}])
+
+    assert linhas[0]["revogada_por_confere"] is False
+    assert linhas[0]["revogada_por_provavel"] == "2314/2022"
+
+
+def test_revogacao_valida_nao_vira_alarme(db: duckdb.DuckDBPyConnection) -> None:
+    """Quando o portal acerta, não há nada a sinalizar."""
+    from radar_cfm_mcp.store.queries import anotar_revogacao
+
+    gravar(db, [_registro(identificador="2314/2022", numero="2314", ano="2022")])
+
+    linhas = anotar_revogacao(db, [{"identificador": "1/2020", "revogada_por": "2314/2022"}])
+
+    assert linhas[0]["revogada_por_confere"] is True
+    assert linhas[0]["revogada_por_provavel"] is None
+
+
+def test_numero_repetido_em_anos_diferentes_nao_gera_palpite(
+    db: duckdb.DuckDBPyConnection,
+) -> None:
+    """Com dois candidatos, escolher um seria chute apresentado como pista."""
+    from radar_cfm_mcp.store.queries import anotar_revogacao
+
+    gravar(
+        db,
+        [
+            _registro(identificador="500/1990", numero="500", ano="1990"),
+            _registro(identificador="500/2005", numero="500", ano="2005"),
+        ],
+    )
+
+    linhas = anotar_revogacao(db, [{"identificador": "1/2020", "revogada_por": "500/2024"}])
+
+    assert linhas[0]["revogada_por_confere"] is False
+    assert linhas[0]["revogada_por_provavel"] is None
