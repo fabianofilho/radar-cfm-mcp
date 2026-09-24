@@ -364,3 +364,17 @@ def test_sdk_diferente_nao_derruba_o_servidor() -> None:
         pass
 
     assert esconder_o_que_nao_existe(Estranho()) == ()
+
+
+@pytest.mark.asyncio
+async def test_monitor_tem_teto_de_limite_no_connector() -> None:
+    """O monitor ganhou 'limite'; no connector público ele precisa do mesmo teto."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    from radar_cfm_mcp.mcp_server.server import LIMITE_MAXIMO, mcp
+
+    ferramentas = {t.name: t for t in await mcp.list_tools()}
+    schema = ferramentas["monitorar_novas_resolucoes"].input_schema["properties"]["limite"]
+    assert (schema["minimum"], schema["maximum"]) == (1, LIMITE_MAXIMO)
+    with pytest.raises(ToolError):
+        await mcp.call_tool("monitorar_novas_resolucoes", {"limite": LIMITE_MAXIMO + 1})

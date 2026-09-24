@@ -521,3 +521,63 @@ def test_cabecalho_prevalece_sobre_norma_citada_logo_abaixo() -> None:
     )
     assert extrair(texto, 2014) == date(2014, 10, 31)
 
+
+def _no_periodo(n: int, *, ementa: str, dias_atras: int, prefixo: int) -> list[dict[str, Any]]:
+    return [
+        _registro(
+            identificador=f"{prefixo + i}/2020",
+            numero=str(prefixo + i),
+            ementa=ementa,
+            data_publicacao=date.today() - timedelta(days=dias_atras + i),
+        )
+        for i in range(n)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_monitor_filtra_o_tema_antes_do_limite(caminho_db: str) -> None:
+    """CFM-2: as 50 mais recentes eram de outro tema e as do tema sumiam."""
+    with conectar(caminho_db) as conexao:
+        gravar(
+            conexao,
+            _no_periodo(60, ementa="Homologa eleição", dias_atras=1, prefixo=100)
+            + _no_periodo(3, ementa="Dispõe sobre telemedicina", dias_atras=400, prefixo=900),
+        )
+
+    r = await monitorar_novas_resolucoes(
+        3650, caminho_db=caminho_db, palavras_chave=("telemedicina",)
+    )
+
+    assert r.total == 3
+    assert r.retornados == 3
+    assert r.truncado is False
+    assert {x.identificador for x in r.resultados} == {"900/2020", "901/2020", "902/2020"}
+
+
+@pytest.mark.asyncio
+async def test_monitor_declara_truncamento(caminho_db: str) -> None:
+    with conectar(caminho_db) as conexao:
+        gravar(conexao, _no_periodo(63, ementa="Homologa eleição", dias_atras=1, prefixo=100))
+
+    r = await monitorar_novas_resolucoes(365, caminho_db=caminho_db)
+
+    assert (r.total, r.retornados, r.truncado) == (63, 50, True)
+    assert r.aviso is not None and "Casaram 63" in r.aviso
+    maior = await monitorar_novas_resolucoes(365, caminho_db=caminho_db, limite=100)
+    assert (maior.retornados, maior.truncado) == (63, False)
+
+
+def test_curinga_do_like_no_tema_e_literal(db: duckdb.DuckDBPyConnection) -> None:
+    """Sem FTS a busca cai para LIKE, e '%' ou '_' no tema não podem casar tudo."""
+    from radar_cfm_mcp.store.queries import contar_por_tema
+
+    gravar(
+        db,
+        [
+            _registro(identificador="1/2020", ementa="Dispõe sobre telemedicina"),
+            _registro(identificador="2/2021", numero="2", ano="2021", ementa="Desconto de 100%"),
+        ],
+    )
+    assert buscar_por_tema(db, "_") == []
+    assert contar_por_tema(db, "%") == 1
+    assert [a["identificador"] for a in buscar_por_tema(db, "100%")] == ["2/2021"]

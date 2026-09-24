@@ -56,7 +56,8 @@ async def consultar_resolucao_cfm(
     Args:
         tema: assunto a buscar, por exemplo "telemedicina" ou "inteligência artificial".
         apenas_vigentes: quando True, omite as resoluções já revogadas.
-        limite: quantas resoluções trazer. Aumente para ver além das mais relevantes.
+        limite: quantas resoluções trazer, no máximo 100. Aumente para ver além das
+            mais relevantes.
     """
     config = carregar_config()
     return await _consultar_resolucao_cfm(
@@ -71,19 +72,30 @@ async def consultar_resolucao_cfm(
 async def monitorar_novas_resolucoes(
     dias: Annotated[int, Field(ge=1, le=DIAS_MAXIMO)] = 30,
     filtrar_tema: bool = True,
+    limite: Annotated[int, Field(ge=1, le=LIMITE_MAXIMO)] = 50,
 ) -> RespostaMonitoramento:
-    """Resoluções do CFM publicadas nos últimos dias.
+    """Resoluções do CFM publicadas nos últimos dias, mais recentes primeiro.
+
+    A janela usa a data de publicação extraída do texto da resolução. As que
+    ficaram sem data não entram, e `sem_data_publicacao` diz quantas são: total
+    zero com esse número alto quer dizer "não sei", não "nada foi publicado".
+
+    A resposta traz `total` (quantas casam no período) e `retornados` (quantas
+    vieram). Com `truncado=true`, aumente `limite` ou encurte `dias`.
 
     Args:
-        dias: tamanho da janela, em dias, a contar de hoje.
-        filtrar_tema: quando True, devolve só as que mencionam os temas
-            configurados (IA, telemedicina, prontuário eletrônico, algoritmo).
+        dias: tamanho da janela, em dias, a contar de hoje (máximo 3650).
+        filtrar_tema: quando True, devolve só as que mencionam, na ementa ou no
+            texto, as palavras-chave configuradas no servidor (por padrão
+            inteligência artificial, telemedicina, prontuário eletrônico e algoritmo).
+        limite: quantas resoluções trazer, no máximo 100.
     """
     config = carregar_config()
     return await _monitorar_novas_resolucoes(
         dias,
         caminho_db=str(config.duckdb_path),
         palavras_chave=config.palavras_chave if filtrar_tema else (),
+        limite=limite,
     )
 
 

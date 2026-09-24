@@ -17,6 +17,7 @@ from radar_cfm_mcp.store.queries import (
     anotar_revogacao,
     buscar_por_identificador,
     buscar_por_tema,
+    contar_no_periodo,
     contar_por_tema,
     identificador_no_tema,
     publicadas_no_periodo,
@@ -41,9 +42,9 @@ AVISO_FONTE = (
 
 AVISO_SO_EMENTA = (
     "Nenhum destes resultados tem o texto integral na base, então a busca comparou só "
-    "a ementa. O projeto baixa o PDF apenas das resoluções cuja ementa toca em IA ou "
-    "telemedicina, que é o escopo dele. Para os demais temas, o conteúdo dos artigos "
-    "não foi lido: abra a URL antes de afirmar o que a norma diz."
+    "a ementa. Sem a opção de texto integral, o sync baixa o PDF apenas das resoluções "
+    "cuja ementa toca em IA ou telemedicina. O conteúdo destes artigos não foi lido: "
+    "abra a URL antes de afirmar o que a norma diz."
 )
 AVISO_REVOGACAO_QUEBRADA = (
     "Há resultado cujo 'revogada_por' aponta para uma resolução que não existe: o portal "
@@ -162,7 +163,22 @@ class RespostaConsulta(BaseModel):
 
 class RespostaMonitoramento(BaseModel):
     dias: int
-    total: int
+    total: int = Field(
+        description=(
+            "Quantas resoluções datadas no período casam com o filtro, na base inteira, "
+            "não quantas vieram nesta resposta."
+        )
+    )
+    retornados: int = Field(
+        default=0, description="Quantas vieram em 'resultados', no máximo 'limite'"
+    )
+    truncado: bool = Field(
+        default=False,
+        description=(
+            "True quando total > retornados. As que vieram são as mais recentes; as "
+            "demais existem e não estão aqui. Aumente 'limite' ou encurte 'dias'."
+        ),
+    )
     sem_data_publicacao: int = Field(
         default=0,
         description=(
@@ -357,7 +373,7 @@ async def monitorar_novas_resolucoes(
     palavras_chave: tuple[str, ...] = (),
     limite: int = 50,
 ) -> RespostaMonitoramento:
-    """Resoluções publicadas no período, filtradas por relevância ao tema de IA."""
+    """Resoluções publicadas no período, opcionalmente só as que citam as palavras-chave."""
     if dias <= 0:
         return RespostaMonitoramento(
             dias=dias,
@@ -366,27 +382,28 @@ async def monitorar_novas_resolucoes(
             aviso="O parâmetro 'dias' precisa ser maior que zero.",
         )
 
-    def consultar(c: duckdb.DuckDBPyConnection) -> tuple[list[dict[str, Any]], tuple[int, int]]:
+    palavras = tuple(p for p in palavras_chave if p.strip())
+
+    def consultar(
+        c: duckdb.DuckDBPyConnection,
+    ) -> tuple[list[dict[str, Any]], int, tuple[int, int]]:
+        linhas = publicadas_no_periodo(c, dias=dias, limite=limite, palavras_chave=palavras)
         return (
-            anotar_revogacao(c, publicadas_no_periodo(c, dias=dias, limite=limite)),
+            anotar_revogacao(c, linhas),
+            contar_no_periodo(c, dias=dias, palavras_chave=palavras),
             sem_data_publicacao(c),
         )
 
-    vazio: tuple[list[dict[str, Any]], tuple[int, int]] = ([], (0, 0))
-    (linhas, (sem_data, total_base)), aviso = _ler(caminho_db, consultar, padrao=vazio)
+    vazio: tuple[list[dict[str, Any]], int, tuple[int, int]] = ([], 0, (0, 0))
+    (linhas, total, (sem_data, total_base)), aviso = _ler(caminho_db, consultar, padrao=vazio)
 
-    if palavras_chave:
-        alvos = tuple(p.lower() for p in palavras_chave if p.strip())
-        linhas = [
-            linha
-            for linha in linhas
-            if any(
-                alvo in f"{linha.get('ementa') or ''} {linha.get('texto_completo') or ''}".lower()
-                for alvo in alvos
-            )
-        ]
-
+    truncado = total > len(linhas)
     avisos = [aviso or AVISO_FONTE]
+    if truncado:
+        avisos.append(
+            f"Casaram {total} resoluções no período e estão aqui as {len(linhas)} mais "
+            f"recentes. Aumente 'limite' ou encurte 'dias' para ver as demais."
+        )
     if sem_data and total_base:
         avisos.append(
             f"{sem_data} das {total_base} resoluções da base estão sem data de publicação "
@@ -396,7 +413,9 @@ async def monitorar_novas_resolucoes(
         )
     return RespostaMonitoramento(
         dias=dias,
-        total=len(linhas),
+        total=total,
+        retornados=len(linhas),
+        truncado=truncado,
         sem_data_publicacao=sem_data,
         resultados=[_para_modelo(linha) for linha in linhas],
         aviso=" ".join(avisos),
