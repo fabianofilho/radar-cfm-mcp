@@ -248,24 +248,35 @@ def publicadas_no_periodo(
     )
 
 
-# Colunas que custam caro para obter e que uma coleta pode simplesmente não
-# trazer. Para elas, o upsert só substitui quando o novo valor tem conteúdo.
-_PRESERVAR_SE_VAZIO = ("texto_completo",)
+# Colunas que uma coleta pode simplesmente nao trazer, e que por isso nao podem
+# ser sobrescritas com vazio. Sao duas por um motivo so: ambas dependem do PDF,
+# que a coleta diaria nao baixa.
+#
+# `data_publicacao` entrou depois de sumir na pratica: 1258 datas viraram 5 numa
+# noite, sobrando exatamente as cinco resolucoes cuja ementa casa com as
+# palavras-chave e que por isso tem PDF na coleta normal. Preservar so o texto
+# nao bastava, porque a data e extraida dele.
+_PRESERVAR_TEXTO = ("texto_completo",)
+_PRESERVAR_VALOR = ("data_publicacao",)
 
 
 def _atribuicao(coluna: str) -> str:
     """Como o upsert atualiza esta coluna.
 
-    O sync baixa o PDF só de parte das resoluções, então a coleta seguinte traz
-    ``texto_completo = NULL`` para todas as outras. Com a atribuição direta, a
-    coleta da madrugada apagaria todo texto já baixado, e o prejuízo só
-    apareceria quando alguém consultasse e recebesse "trecho não encontrado".
+    O sync baixa o PDF so de parte das resolucoes, entao a coleta seguinte traz
+    texto e data nulos para todas as outras. Com a atribuicao direta, a coleta da
+    madrugada apaga o que foi baixado antes, e o prejuizo so aparece quando
+    alguem consulta e recebe "nao encontrado".
 
-    Texto ausente na coleta significa "não busquei desta vez", nunca "a norma
-    ficou sem texto".
+    Ausente na coleta significa "nao busquei desta vez", nunca "deixou de
+    existir".
     """
-    if coluna in _PRESERVAR_SE_VAZIO:
+    if coluna in _PRESERVAR_TEXTO:
+        # nullif para tratar string vazia como ausencia, que e como o parser de
+        # PDF devolve quando nao consegue extrair nada.
         return f"{coluna} = coalesce(nullif(excluded.{coluna}, ''), resolucoes.{coluna})"
+    if coluna in _PRESERVAR_VALOR:
+        return f"{coluna} = coalesce(excluded.{coluna}, resolucoes.{coluna})"
     return f"{coluna} = excluded.{coluna}"
 
 

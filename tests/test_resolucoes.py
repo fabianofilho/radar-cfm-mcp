@@ -462,3 +462,23 @@ def test_numero_repetido_em_anos_diferentes_nao_gera_palpite(
 
     assert linhas[0]["revogada_por_confere"] is False
     assert linhas[0]["revogada_por_provavel"] is None
+
+
+def test_coleta_sem_pdf_nao_apaga_a_data(db: duckdb.DuckDBPyConnection) -> None:
+    """Aconteceu em produção: 1258 datas viraram 5 numa noite."""
+    publicada = date(2022, 5, 5)
+    gravar(db, [_registro(data_publicacao=publicada, texto_completo="texto do PDF")])
+    gravar(db, [_registro(data_publicacao=None, texto_completo=None, ementa="ementa nova")])
+
+    linha = db.execute("SELECT ementa, data_publicacao, texto_completo FROM resolucoes").fetchone()
+    assert linha[0] == "ementa nova", "o que a coleta traz tem que entrar"
+    assert linha[1] == publicada, "a data veio do PDF e a coleta diária não baixa PDF"
+    assert linha[2] == "texto do PDF"
+
+
+def test_data_nova_substitui_a_antiga(db: duckdb.DuckDBPyConnection) -> None:
+    """Preservar não pode virar congelar."""
+    gravar(db, [_registro(data_publicacao=date(2020, 1, 1))])
+    gravar(db, [_registro(data_publicacao=date(2022, 5, 5))])
+
+    assert db.execute("SELECT data_publicacao FROM resolucoes").fetchone()[0] == date(2022, 5, 5)
