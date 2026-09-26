@@ -15,7 +15,7 @@ garantido.
 Entra:
 
 - o código deste repositório (servidor MCP, crawler, CLI, units em `deploy/`);
-- o connector público em `https://mcp.tailf42a96.ts.net/cfm/mcp`: contornar os tetos
+- o connector público em `https://debian-f.tailf42a96.ts.net/cfm/mcp`: contornar os tetos
   de requisição ou de parâmetros, ler ou alterar arquivos fora da base, derrubar o
   serviço com poucas requisições.
 
