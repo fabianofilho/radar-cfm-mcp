@@ -80,7 +80,7 @@ def buscar_por_tema(
 
 
 # "2314", "2314/2022", "2.314/2022", "Resolucao CFM n 2.314/2022". O ponto de
-# milhar e opcional porque o CFM escreve dos dois jeitos no proprio texto.
+# milhar e opcional porque o CFM escreve dos dois jeitos no próprio texto.
 _IDENTIFICADOR = re.compile(
     r"^(?:resolu[çc][ãa]o\s+)?(?:cfm\s+)?(?:n[º°o]?\.?\s*)?"
     r"(\d{1,2}[.\s]?\d{3}|\d{1,4})\s*(?:/\s*(\d{4}))?$",
@@ -166,7 +166,7 @@ def anotar_revogacao(
         candidatos = conexao.execute(
             "SELECT identificador FROM resolucoes WHERE numero = ?", [numero]
         ).fetchall()
-        # Mais de um ano com o mesmo numero nao permite escolher sem chutar.
+        # Mais de um ano com o mesmo número não permite escolher sem chutar.
         if len(candidatos) == 1:
             provaveis[alvo] = candidatos[0][0]
 
@@ -297,14 +297,14 @@ def contar_no_periodo(
     return int(linha[0]) if linha else 0
 
 
-# Colunas que uma coleta pode simplesmente nao trazer, e que por isso nao podem
-# ser sobrescritas com vazio. Sao duas por um motivo so: ambas dependem do PDF,
-# que a coleta diaria nao baixa.
+# Colunas que uma coleta pode simplesmente não trazer, e que por isso não podem
+# ser sobrescritas com vazio. São duas por um motivo so: ambas dependem do PDF,
+# que a coleta diária não baixa.
 #
 # `data_publicacao` entrou depois de sumir na pratica: 1258 datas viraram 5 numa
 # noite, sobrando exatamente as cinco resolucoes cuja ementa casa com as
 # palavras-chave e que por isso tem PDF na coleta normal. Preservar so o texto
-# nao bastava, porque a data e extraida dele.
+# não bastava, porque a data e extraida dele.
 _PRESERVAR_TEXTO = ("texto_completo",)
 _PRESERVAR_VALOR = ("data_publicacao",)
 
@@ -312,17 +312,17 @@ _PRESERVAR_VALOR = ("data_publicacao",)
 def _atribuicao(coluna: str) -> str:
     """Como o upsert atualiza esta coluna.
 
-    O sync baixa o PDF so de parte das resolucoes, entao a coleta seguinte traz
+    O sync baixa o PDF so de parte das resolucoes, então a coleta seguinte traz
     texto e data nulos para todas as outras. Com a atribuicao direta, a coleta da
     madrugada apaga o que foi baixado antes, e o prejuizo so aparece quando
-    alguem consulta e recebe "nao encontrado".
+    alguém consulta e recebe "não encontrado".
 
-    Ausente na coleta significa "nao busquei desta vez", nunca "deixou de
+    Ausente na coleta significa "não busquei desta vez", nunca "deixou de
     existir".
     """
     if coluna in _PRESERVAR_TEXTO:
         # nullif para tratar string vazia como ausencia, que e como o parser de
-        # PDF devolve quando nao consegue extrair nada.
+        # PDF devolve quando não consegue extrair nada.
         return f"{coluna} = coalesce(nullif(excluded.{coluna}, ''), resolucoes.{coluna})"
     if coluna in _PRESERVAR_VALOR:
         return f"{coluna} = coalesce(excluded.{coluna}, resolucoes.{coluna})"

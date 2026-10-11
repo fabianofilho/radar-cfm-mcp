@@ -34,8 +34,8 @@ class ResultadoSync:
 
 def _registro(resolucao: Resolucao, **extra: Any) -> dict[str, Any]:
     texto = extra.get("texto_completo")
-    # O campo DATA do portal e a data de carga no sistema deles, nao a
-    # publicacao: resolucao de 1972 vem com 01/11/24. A data boa esta no texto.
+    # O campo DATA do portal e a data de carga no sistema deles, não a
+    # publicação: resolucao de 1972 vem com 01/11/24. A data boa esta no texto.
     data = extrair_data_publicacao(texto, resolucao.ano)
     return {
         "identificador": resolucao.identificador,
@@ -79,10 +79,10 @@ async def sincronizar(
     """
     cache = CachePdf(diretorio_cache)
     baixados = 0
-    # Quem ja tem texto na base nao precisa do PDF de novo: o upsert preserva o
-    # texto e a data quando a coleta traz nulo. Sem isto, o sync diario com
+    # Quem ja tem texto na base não precisa do PDF de novo: o upsert preserva o
+    # texto e a data quando a coleta traz nulo. Sem isto, o sync diário com
     # --texto-integral releria as 2.457 do cache toda noite. A marca de
-    # extracao incompleta vai junto, senao a coleta a apagaria.
+    # extração incompleta vai junto, senao a coleta a apagaria.
     ja_lidas: dict[str, bool] = dict(
         conexao.execute(
             "SELECT identificador, metadados_incompletos FROM resolucoes "
@@ -150,16 +150,16 @@ async def sincronizar(
 
 
 def reextrair_datas(conexao: duckdb.DuckDBPyConnection) -> tuple[int, int]:
-    """Refaz a data de publicacao a partir do texto que ja esta na base.
+    """Refaz a data de publicação a partir do texto que ja esta na base.
 
     O extrator melhora com o tempo, mas a data so era calculada quando o PDF
-    passava pelo parser, e o sync nao rele o que ja tem texto. Sem este passo,
+    passava pelo parser, e o sync não rele o que ja tem texto. Sem este passo,
     uma correcao no extrator nunca chegaria as resolucoes antigas. Roda sobre o
     texto gravado, sem tocar no portal.
 
-    So escreve quando o extrator acha uma data: ausencia nao apaga data que ja
+    So escreve quando o extrator acha uma data: ausencia não apaga data que ja
     existia. Devolve (preenchidas, corrigidas), onde corrigida e a que tinha
-    data diferente, tipicamente a de outra norma citada no cabecalho.
+    data diferente, tipicamente a de outra norma citada no cabeçalho.
     """
     linhas = conexao.execute(
         "SELECT identificador, ano, data_publicacao, texto_completo FROM resolucoes "
