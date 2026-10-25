@@ -21,12 +21,12 @@ Há uma instância pública deste servidor, mantida pelo autor, para quem quer u
 instalar nada:
 
 ```
-https://debian-f.tailf42a96.ts.net/cfm/mcp
+https://mcp.iamed.cc/cfm/mcp
 ```
 
 - **No Claude (web ou desktop):** Configurações, Conectores, adicionar conector
   personalizado, e colar a URL acima.
-- **No Claude Code:** `claude mcp add --transport http radar-cfm https://debian-f.tailf42a96.ts.net/cfm/mcp`
+- **No Claude Code:** `claude mcp add --transport http radar-cfm https://mcp.iamed.cc/cfm/mcp`
 
 Antes de usar, saiba o que ela é:
 
