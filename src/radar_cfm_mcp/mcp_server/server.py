@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import sys
+from pathlib import Path
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import Icon
 from pydantic import Field
 
 from radar_cfm_mcp.config import carregar_config
@@ -22,7 +25,19 @@ from radar_cfm_mcp.mcp_server.tools.resolucoes import (
 
 logger = logging.getLogger(__name__)
 
-mcp = MCPServer("radar-cfm-mcp", version="0.1.0")
+# Ícone do servidor e das tools, no molde da família (ecg-mcp): o robô do IA.med
+# com radar com cruz no visor. Em data URI, e não URL: o cliente precisa ver o
+# ícone antes de autenticar, e o endereço do Funnel é um só para todos os servidores.
+ICONE = [
+    Icon(
+        src="data:image/svg+xml;base64,"
+        + base64.b64encode((Path(__file__).parent / "icone.svg").read_bytes()).decode(),
+        mimeType="image/svg+xml",
+        sizes=["any"],
+    )
+]
+
+mcp = MCPServer("radar-cfm-mcp", version="0.1.0", icons=ICONE)
 
 # Tetos dos parametros das tools. O connector e publico: sem teto, uma chamada
 # com limite enorme devolve a base inteira e um cliente em laco multiplica isso.
@@ -30,7 +45,7 @@ LIMITE_MAXIMO = 100
 DIAS_MAXIMO = 3650
 
 
-@mcp.tool()
+@mcp.tool(icons=ICONE)
 async def consultar_resolucao_cfm(
     tema: str,
     apenas_vigentes: bool = True,
@@ -68,7 +83,7 @@ async def consultar_resolucao_cfm(
     )
 
 
-@mcp.tool()
+@mcp.tool(icons=ICONE)
 async def monitorar_novas_resolucoes(
     dias: Annotated[int, Field(ge=1, le=DIAS_MAXIMO)] = 30,
     filtrar_tema: bool = True,
