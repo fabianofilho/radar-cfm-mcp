@@ -26,7 +26,7 @@ BASE_BUSCA = "https://portal.cfm.org.br/buscar-normas-cfm-e-crm/"
 BASE_PDF = "https://sistemas.cfm.org.br/normas/arquivos"
 BASE_VISUALIZAR = "https://sistemas.cfm.org.br/normas/visualizar"
 
-# Identifica o projeto para quem administra o portal, com link para o repositorio.
+# Identifica o projeto para quem administra o portal, com link para o repositório.
 # Um coletor publico anonimo e ma cidadania: se algo incomodar do outro lado,
 # precisa haver como descobrir o que e e falar com quem mantem.
 USER_AGENT = "radar-cfm-mcp/0.1 (+https://github.com/fabianofilho/radar-cfm-mcp)"
@@ -45,9 +45,9 @@ class Resolucao:
 
     numero: str
     ano: str
-    # Campo DATA do portal. NAO e a data de publicacao no DOU: a Resolucao
+    # Campo DATA do portal. NÃO e a data de publicação no DOU: a Resolucao
     # 467/1972 vem com "01/11/24", que e quando entrou no sistema do CFM. Fica
-    # aqui por ser o que a fonte da, mas quem precisa da publicacao usa
+    # aqui por ser o que a fonte da, mas quem precisa da publicação usa
     # extract.datas.extrair_data_publicacao, que le do texto.
     data_no_portal: date | None
     ementa: str

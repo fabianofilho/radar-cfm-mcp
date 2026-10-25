@@ -253,8 +253,8 @@ def _trecho(texto: str | None, termo: str, *, janela: int = 260) -> str | None:
 
 def _para_modelo(linha: dict[str, Any], termo: str | None = None) -> ResolucaoCFM:
     texto = linha.get("texto_completo")
-    # Lido da ementa a cada resposta, e nao de coluna: assim vale na base que ja
-    # existe, sem esperar a proxima coleta.
+    # Lido da ementa a cada resposta, e não de coluna: assim vale na base que ja
+    # existe, sem esperar a próxima coleta.
     suspensao = detectar_suspensao(linha.get("ementa"))
     return ResolucaoCFM(
         identificador=linha["identificador"],
@@ -342,9 +342,9 @@ async def consultar_resolucao_cfm(
             f"Não conclua que só existem {len(linhas)} sobre o tema; aumente 'limite' "
             f"para ver mais."
         )
-    # Vale sempre que o tema tem mais de uma palavra, nao so quando trunca: um
+    # Vale sempre que o tema tem mais de uma palavra, não so quando trunca: um
     # termo sem sentido trouxe 2 resultados porque o texto deles tinha uma das
-    # palavras, e ali nao havia truncamento para disparar o aviso.
+    # palavras, e ali não havia truncamento para disparar o aviso.
     if endereco is None and len(tema.split()) > 1:
         avisos.append(AVISO_BUSCA_POR_PALAVRA)
     if linhas and not any(linha.get("texto_completo") for linha in linhas):

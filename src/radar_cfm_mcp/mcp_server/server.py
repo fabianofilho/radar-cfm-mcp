@@ -39,7 +39,7 @@ ICONE = [
 
 mcp = MCPServer("radar-cfm-mcp", version="0.1.0", icons=ICONE)
 
-# Tetos dos parametros das tools. O connector e publico: sem teto, uma chamada
+# Tetos dos parâmetros das tools. O connector e publico: sem teto, uma chamada
 # com limite enorme devolve a base inteira e um cliente em laco multiplica isso.
 LIMITE_MAXIMO = 100
 DIAS_MAXIMO = 3650
@@ -118,11 +118,11 @@ def _seguranca_de_transporte(config: Any) -> Any:
     """Regras de Host/Origin quando o servidor atende por um nome publico.
 
     O SDK so liga a protecao contra DNS rebinding sozinho quando o bind e
-    loopback, e ai aceita apenas Host de loopback. Atras de um tunel ou proxy o
-    Host que chega e o nome publico, e a requisicao legitima levaria 421. Em vez
+    loopback, e ai aceita apenas Host de loopback. Atrás de um tunel ou proxy o
+    Host que chega e o nome publico, e a requisição legitima levaria 421. Em vez
     de desligar a checagem, declaramos os nomes por onde o servidor responde.
 
-    Devolve None quando nao ha nome publico configurado, deixando o padrao do
+    Devolve None quando não ha nome publico configurado, deixando o padrao do
     SDK valer.
     """
     if not config.http_hosts_publicos:
@@ -133,16 +133,16 @@ def _seguranca_de_transporte(config: Any) -> Any:
     hosts: list[str] = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
     origens: list[str] = ["http://127.0.0.1:*", "http://localhost:*"]
     for nome in config.http_hosts_publicos:
-        # Com e sem porta: atras de TLS o Host costuma vir sem o ":443".
+        # Com e sem porta: atrás de TLS o Host costuma vir sem o ":443".
         hosts += [nome, f"{nome}:*"]
         origens += [f"https://{nome}", f"https://{nome}:*"]
     return TransportSecuritySettings(allowed_hosts=hosts, allowed_origins=origens)
 
 
 def _com_limite(app: Any, limite_por_minuto: int, limite_global: int) -> Any:
-    """Embrulha o app ASGI com o teto de requisicoes por origem.
+    """Embrulha o app ASGI com o teto de requisições por origem.
 
-    O `run()` do SDK nao aceita middleware, entao o app e construido por
+    O `run()` do SDK não aceita middleware, então o app e construido por
     `streamable_http_app()`, embrulhado aqui e servido por uvicorn.
     """
     limitador = LimitadorPorOrigem(limite_por_minuto, limite_global)
@@ -193,9 +193,9 @@ def main() -> None:
         mcp.run(transport="stdio")
         return
 
-    # Modo connector. A base e aberta somente para leitura a cada requisicao, e
+    # Modo connector. A base e aberta somente para leitura a cada requisição, e
     # o sync roda FORA deste processo: um escritor com leitor aberto e recusado
-    # pelo DuckDB, entao a coleta grava num arquivo novo e troca por rename.
+    # pelo DuckDB, então a coleta grava num arquivo novo e troca por rename.
     import uvicorn
 
     app = _com_limite(
